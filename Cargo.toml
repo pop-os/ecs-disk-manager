@@ -1,0 +1,21 @@
+[package]
+name = "ecs-disk-manager"
+version = "0.1.0"
+authors = ["Michael Aaron Murphy <mmstick@pm.me>"]
+edition = "2018"
+
+[workspace]
+members = [
+	"prober",
+	"prober/blkid",
+	"prober/blkid/sys",
+	"types"
+]
+
+[dependencies]
+disk-prober = { path = "prober" }
+disk-types = { path = "types" }
+slotmap = "0.3.0"
+secstr = "0.3.2"
+dces = "0.1.6"
+auto_enums = "0.5.8"
