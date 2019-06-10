@@ -5,7 +5,7 @@ authors = ["Michael Aaron Murphy <mmstick@pm.me>"]
 edition = "2018"
 
 [dependencies]
-blkid = { path = "./blkid" }
+blkid = { git = "https://github.com/pop-os/blkid" }
 
 [dev-dependencies]
 prettytable-rs = "0.8.0"
