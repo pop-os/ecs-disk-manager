@@ -5,12 +5,7 @@ authors = ["Michael Aaron Murphy <mmstick@pm.me>"]
 edition = "2018"
 
 [workspace]
-members = [
-	"prober",
-	"prober/blkid",
-	"prober/blkid/sys",
-	"types"
-]
+members = [ "prober", "types" ]
 
 [dependencies]
 disk-prober = { path = "prober" }
