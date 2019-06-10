@@ -17,6 +17,7 @@ pub enum FileSystem {
     Xfs,
     Luks,
     Lvm,
+    Zfs,
 }
 
 /// Indicates that a partition is either too small or too large.
@@ -81,12 +82,13 @@ impl FromStr for FileSystem {
             "ext4" => FileSystem::Ext4,
             "f2fs" => FileSystem::F2fs,
             "fat16" => FileSystem::Fat16,
-            "fat32" => FileSystem::Fat32,
+            "fat32" | "vfat" => FileSystem::Fat32,
             "swap" | "linux-swap(v1)" => FileSystem::Swap,
             "ntfs" => FileSystem::Ntfs,
             "xfs" => FileSystem::Xfs,
             "lvm" | "lvm2_member" => FileSystem::Lvm,
             "luks" | "crypto_luks" => FileSystem::Luks,
+            "zfs" => FileSystem::Zfs,
             _ => return Err("invalid file system name"),
         };
         Ok(type_)
@@ -105,10 +107,11 @@ impl From<FileSystem> for &'static str {
             FileSystem::Fat16 => "fat16",
             FileSystem::Fat32 => "fat32",
             FileSystem::Ntfs => "ntfs",
-            FileSystem::Swap => "linux-swap(v1)",
+            FileSystem::Swap => "swap",
             FileSystem::Xfs => "xfs",
             FileSystem::Lvm => "lvm",
             FileSystem::Luks => "luks",
+            FileSystem::Zfs => "zfs",
         }
     }
 }

@@ -7,7 +7,7 @@ pub mod prelude {
 }
 
 use secstr::SecStr;
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::partitions::PartitionTable;
 
@@ -19,7 +19,8 @@ pub struct Disk {
 
 #[derive(Debug)]
 pub struct Device {
-    pub path:                 PathBuf,
+    pub name:                 Box<str>,
+    pub path:                 Box<Path>,
     pub sectors:              u64,
     pub logical_sector_size:  u64,
     pub physical_sector_size: u64,

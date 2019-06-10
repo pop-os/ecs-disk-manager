@@ -12,5 +12,3 @@ disk-prober = { path = "prober" }
 disk-types = { path = "types" }
 slotmap = "0.3.0"
 secstr = "0.3.2"
-dces = "0.1.6"
-auto_enums = "0.5.8"

@@ -91,12 +91,12 @@ impl<'a> From<EntryIter<'a>> for DeviceIter<'a> {
 }
 
 impl<'a> Iterator for DeviceIter<'a> {
-    type Item = Result<(PartitionEntry<'a>, PathBuf), EntryError>;
+    type Item = Result<(PartitionEntry<'a>, Box<Path>), EntryError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next().map(|res| {
             res.map(|entry| {
-                let path = PathBuf::from(["/dev/", entry.name].concat());
+                let path = PathBuf::from(["/dev/", entry.name].concat()).into();
                 (entry, path)
             })
         })

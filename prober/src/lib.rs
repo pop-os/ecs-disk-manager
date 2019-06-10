@@ -3,6 +3,7 @@ mod partitions;
 pub use self::partitions::*;
 
 use blkid::*;
+use disk_types::prelude::PartitionTable;
 use std::{
     fs, io,
     path::{Path, PathBuf},
@@ -24,6 +25,7 @@ pub enum DiskProberError {
     Sectors(BlkIdError),
     Size(BlkIdError),
     Topology(BlkIdError),
+    UnknownTable(Box<str>),
 }
 
 pub struct Prober(PartitionsFile);
@@ -66,7 +68,7 @@ impl<'a> Iterator for ProberIter<'a> {
 
 pub struct Probed<'a> {
     pub entry: PartitionEntry<'a>,
-    pub path:  PathBuf,
+    pub path:  Box<Path>,
     pub probe: Probe,
 }
 
@@ -87,13 +89,22 @@ impl<'a> Probed<'a> {
             logical_sector_size = topology.get_logical_sector_size();
         }
 
-        let type_ = self.probe.lookup_value("TYPE").ok().map(Box::from);
+        let fstype = self.probe.lookup_value("TYPE").ok().map(Box::from);
         let uuid = self.probe.lookup_value("UUID").ok().map(Box::from);
         let mut table = None;
         let mut partitions = Vec::new();
 
         if let Ok(list) = self.probe.get_partitions() {
-            table = list.get_table().map(Table::get_type).map(Box::from);
+            table = list
+                .get_table()
+                .map(Table::get_type)
+                .map(|string| {
+                    string
+                        .parse::<PartitionTable>()
+                        .map_err(|_| DiskProberError::UnknownTable(string.into()))
+                })
+                .transpose()?;
+
             if let Ok(nparts) = list.numof_partitions() {
                 for porder in 0..nparts {
                     let partition = list
@@ -111,15 +122,15 @@ impl<'a> Probed<'a> {
 
                     probe.probe_full().map_err(DiskProberError::PartitionProbe)?;
                     partitions.push(ProbePartInfo {
-                        device,
-                        no: partno,
-                        path,
-                        sectors: partition.get_size(),
-                        offset: partition.get_start(),
+                        device:    Box::from(device),
+                        no:        partno,
+                        path:      Box::from(path),
+                        sectors:   partition.get_size(),
+                        offset:    partition.get_start(),
                         partlabel: partition.get_name().map(Box::from),
-                        partuuid: partition.get_uuid().map(Box::from),
-                        uuid: probe.lookup_value("UUID").ok().map(Box::from),
-                        type_: probe.lookup_value("TYPE").ok().map(Box::from),
+                        partuuid:  partition.get_uuid().map(Box::from),
+                        uuid:      probe.lookup_value("UUID").ok().map(Box::from),
+                        fstype:    probe.lookup_value("TYPE").ok().map(Box::from),
                     });
                 }
             }
@@ -154,7 +165,7 @@ impl<'a> Probed<'a> {
             sectors,
             logical_sector_size,
             physical_sector_size,
-            type_,
+            fstype,
             uuid,
             partitions,
         })
@@ -172,20 +183,20 @@ pub struct ProbeInfo<'a, 'b> {
     pub physical_sector_size: u64,
     pub sectors:              u64,
     pub size:                 u64,
-    pub type_:                Option<Box<str>>,
+    pub fstype:               Option<Box<str>>,
     pub uuid:                 Option<Box<str>>,
     pub variant:              DeviceVariant,
 }
 
 pub struct ProbePartInfo {
-    pub device:    String,
+    pub device:    Box<str>,
     pub no:        u32,
     pub offset:    u64,
     pub partlabel: Option<Box<str>>,
     pub partuuid:  Option<Box<str>>,
-    pub path:      PathBuf,
+    pub path:      Box<Path>,
     pub sectors:   u64,
-    pub type_:     Option<Box<str>>,
+    pub fstype:    Option<Box<str>>,
     pub uuid:      Option<Box<str>>,
 }
 
@@ -193,5 +204,16 @@ pub struct ProbePartInfo {
 pub enum DeviceVariant {
     Loopback(Box<Path>),
     Map(Box<str>),
-    Physical(Option<Box<str>>),
+    Physical(Option<PartitionTable>),
+}
+
+pub fn slaves_iter(device: &str) -> impl Iterator<Item = Box<str>> {
+    let dir = PathBuf::from(["/sys/class/block/", device, "/slaves"].concat());
+
+    fs::read_dir(dir).ok().into_iter().flat_map(|readdir| {
+        readdir
+            .filter_map(|entry| entry.ok())
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            .map(Box::from)
+    })
 }
