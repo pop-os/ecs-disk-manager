@@ -3,7 +3,10 @@ mod partitions;
 pub use self::partitions::*;
 
 use blkid::*;
-use std::{fs, io, path::{Path, PathBuf}};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug)]
 pub enum DiskProberError {
@@ -32,20 +35,16 @@ impl Prober {
 }
 
 impl<'a> IntoIterator for &'a Prober {
-    type Item = Result<Option<Probed<'a>>, DiskProberError>;
     type IntoIter = ProberIter<'a>;
+    type Item = Result<Option<Probed<'a>>, DiskProberError>;
 
-    fn into_iter(self) -> Self::IntoIter {
-        ProberIter::from(DeviceIter::from(self.0.into_iter()))
-    }
+    fn into_iter(self) -> Self::IntoIter { ProberIter::from(DeviceIter::from(self.0.into_iter())) }
 }
 
 pub struct ProberIter<'a>(DeviceIter<'a>);
 
 impl<'a> From<DeviceIter<'a>> for ProberIter<'a> {
-    fn from(iter: DeviceIter<'a>) -> Self {
-        Self(iter)
-    }
+    fn from(iter: DeviceIter<'a>) -> Self { Self(iter) }
 }
 
 impl<'a> Iterator for ProberIter<'a> {
@@ -53,24 +52,21 @@ impl<'a> Iterator for ProberIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next().map(|result| {
-            result
-                .map_err(DiskProberError::Entry)
-                .and_then(|(entry, path)| {
-                    let probe = Probe::new_from(&path).map_err(DiskProberError::BlkId)?;
-                    if probe.is_wholedisk().unwrap_or(false) {
-                        Ok(Some(Probed { entry, path, probe }))
-                    } else {
-                        Ok(None)
-                    }
-                })
+            result.map_err(DiskProberError::Entry).and_then(|(entry, path)| {
+                let probe = Probe::new_from(&path).map_err(DiskProberError::BlkId)?;
+                if probe.is_wholedisk().unwrap_or(false) {
+                    Ok(Some(Probed { entry, path, probe }))
+                } else {
+                    Ok(None)
+                }
+            })
         })
-
     }
 }
 
 pub struct Probed<'a> {
     pub entry: PartitionEntry<'a>,
-    pub path: PathBuf,
+    pub path:  PathBuf,
     pub probe: Probe,
 }
 
@@ -104,16 +100,14 @@ impl<'a> Probed<'a> {
                         .get_partition(porder)
                         .ok_or_else(|| DiskProberError::GetPartition(porder))?;
 
-                    let partno = partition.get_partno()
-                        .map_err(DiskProberError::PartitionNo)?;
+                    let partno = partition.get_partno().map_err(DiskProberError::PartitionNo)?;
 
                     let nvme = self.entry.name.chars().last().map_or(false, char::is_numeric);
                     let modifier = if nvme { "p" } else { "" };
                     let device = format!("{}{}{}", self.entry.name, modifier, partno);
                     let path = PathBuf::from(format!("/dev/{}", device));
 
-                    let probe = Probe::new_from(&path)
-                        .map_err(DiskProberError::PartitionNew)?;
+                    let probe = Probe::new_from(&path).map_err(DiskProberError::PartitionNew)?;
 
                     probe.probe_full().map_err(DiskProberError::PartitionProbe)?;
                     partitions.push(ProbePartInfo {
@@ -125,7 +119,7 @@ impl<'a> Probed<'a> {
                         partlabel: partition.get_name().map(Box::from),
                         partuuid: partition.get_uuid().map(Box::from),
                         uuid: probe.lookup_value("UUID").ok().map(Box::from),
-                        type_: probe.lookup_value("TYPE").ok().map(Box::from)
+                        type_: probe.lookup_value("TYPE").ok().map(Box::from),
                     });
                 }
             }
@@ -139,7 +133,8 @@ impl<'a> Probed<'a> {
 
             DeviceVariant::Map(dm_name.into())
         } else if self.entry.name.starts_with("loop") {
-            let backing_path = ["/sys/class/block/", self.entry.name, "/loop/backing_file"].concat();
+            let backing_path =
+                ["/sys/class/block/", self.entry.name, "/loop/backing_file"].concat();
             let mut backing = fs::read_to_string(backing_path.as_str())
                 .map_err(DiskProberError::LoopWithoutBackingFile)?;
             backing.pop();
@@ -167,31 +162,31 @@ impl<'a> Probed<'a> {
 }
 
 pub struct ProbeInfo<'a, 'b> {
-    pub alignment: u64,
-    pub device: &'a str,
-    pub devno_major: u16,
-    pub devno_minor: u16,
-    pub logical_sector_size: u64,
-    pub partitions: Vec<ProbePartInfo>,
-    pub path: &'b Path,
+    pub alignment:            u64,
+    pub device:               &'a str,
+    pub devno_major:          u16,
+    pub devno_minor:          u16,
+    pub logical_sector_size:  u64,
+    pub partitions:           Vec<ProbePartInfo>,
+    pub path:                 &'b Path,
     pub physical_sector_size: u64,
-    pub sectors: u64,
-    pub size: u64,
-    pub type_: Option<Box<str>>,
-    pub uuid: Option<Box<str>>,
-    pub variant: DeviceVariant,
+    pub sectors:              u64,
+    pub size:                 u64,
+    pub type_:                Option<Box<str>>,
+    pub uuid:                 Option<Box<str>>,
+    pub variant:              DeviceVariant,
 }
 
 pub struct ProbePartInfo {
-    pub device: String,
-    pub no: u32,
-    pub offset: u64,
+    pub device:    String,
+    pub no:        u32,
+    pub offset:    u64,
     pub partlabel: Option<Box<str>>,
-    pub partuuid: Option<Box<str>>,
-    pub path: PathBuf,
-    pub sectors: u64,
-    pub type_: Option<Box<str>>,
-    pub uuid: Option<Box<str>>,
+    pub partuuid:  Option<Box<str>>,
+    pub path:      PathBuf,
+    pub sectors:   u64,
+    pub type_:     Option<Box<str>>,
+    pub uuid:      Option<Box<str>>,
 }
 
 #[derive(Debug)]

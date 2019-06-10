@@ -6,12 +6,22 @@ use prettytable::{format::FormatBuilder, Cell, Row, Table};
 
 fn main() {
     let mut table = Table::new();
-    table.set_format(FormatBuilder::new()
-        .borders(' ')
-        .column_separator(' ')
-        .padding(1, 1)
-        .build());
-    table.add_row(row!["DEVICE", "PATH", "VARIANT", "MAJ:MIN", "SSIZE", "ALIGN", "SECTORS", "START", "TYPE", "UUID", "PARTUUID", "PARTLABEL"]);
+    table.set_format(FormatBuilder::new().borders(' ').column_separator(' ').padding(0, 0).build());
+
+    table.add_row(row![
+        "DEVICE",
+        "PATH",
+        "VARIANT",
+        "MAJ:MIN",
+        "SSIZE",
+        "ALIGN",
+        "SECTORS",
+        "START",
+        "TYPE",
+        "UUID",
+        "PARTUUID",
+        "PARTLABEL"
+    ]);
 
     let prober = Prober::new().unwrap();
     for probed_res in prober.into_iter().filter_map(Result::transpose) {
@@ -44,7 +54,7 @@ fn main() {
                             Cell::new(pinfo.type_.as_ref().map_or("", AsRef::as_ref)),
                             Cell::new(pinfo.uuid.as_ref().map_or("", AsRef::as_ref)),
                             Cell::new(pinfo.partuuid.as_ref().map_or("", AsRef::as_ref)),
-                            Cell::new(pinfo.partlabel.as_ref().map_or("", AsRef::as_ref))
+                            Cell::new(pinfo.partlabel.as_ref().map_or("", AsRef::as_ref)),
                         ]));
                     }
                 }
