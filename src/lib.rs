@@ -8,7 +8,10 @@ use slotmap::*;
 use std::{
     collections::{HashMap, HashSet},
     iter,
-    sync::{atomic::{AtomicBool, Ordering}, Arc},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 pub use self::builder::*;
@@ -16,7 +19,7 @@ pub use slotmap::DefaultKey as Entity;
 
 #[derive(Debug)]
 pub enum DiskError {
-    Cancelled
+    Cancelled,
 }
 
 #[derive(Debug, Default)]
@@ -62,9 +65,7 @@ impl DiskManager {
     }
 
     pub fn device(&self, entity: Entity) -> &Device {
-        self.storage.devices
-            .get(entity)
-            .expect("invalid device entity; report this as a bug")
+        self.storage.devices.get(entity).expect("invalid device entity; report this as a bug")
     }
 
     pub fn devices<'a>(&'a self) -> impl Iterator<Item = DeviceEntity<'a>> + 'a {
@@ -93,7 +94,7 @@ impl DiskManager {
                 if cancel.load(Ordering::SeqCst) {
                     return Err(DiskError::Cancelled);
                 }
-            }
+            };
         }
 
         // TODO: Determine which operations are safe to carry out in parallel.
@@ -136,10 +137,10 @@ impl DiskManager {
 
 #[derive(Debug, Default)]
 struct DiskOps {
-    pub create: Vec<(Entity, PartitionBuilder)>,
-    pub format: HashMap<Entity, FileSystem>,
+    pub create:  Vec<(Entity, PartitionBuilder)>,
+    pub format:  HashMap<Entity, FileSystem>,
     pub mklabel: HashMap<Entity, PartitionTable>,
-    pub remove: HashSet<Entity>,
+    pub remove:  HashSet<Entity>,
 }
 
 impl DiskOps {
@@ -163,9 +164,7 @@ impl<'a> DeviceEntity<'a> {
     }
 
     // Access information about this device.
-    pub fn device<'b>(&'b self) -> &'b Device {
-        self.ctx.device(self.id)
-    }
+    pub fn device<'b>(&'b self) -> &'b Device { self.ctx.device(self.id) }
 
     // If the device is a disk, information about that disk can be retrieved here.
     pub fn disk<'b>(&'b self) -> Option<&'b Disk> { self.ctx.storage.disks.get(self.id) }
