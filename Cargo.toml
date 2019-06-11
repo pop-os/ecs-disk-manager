@@ -5,10 +5,16 @@ authors = ["Michael Aaron Murphy <mmstick@pm.me>"]
 edition = "2018"
 
 [workspace]
-members = [ "prober", "types" ]
+members = [
+	"members/cryptsetup",
+	"members/cryptsetup/sys",
+	"members/lvmdbus1",
+	"members/prober",
+	"members/types"
+]
 
 [dependencies]
-disk-prober = { path = "prober" }
-disk-types = { path = "types" }
+disk-prober = { path = "members/prober" }
+disk-types = { path = "members/types" }
 slotmap = "0.3.0"
 secstr = "0.3.2"
