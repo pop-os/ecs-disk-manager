@@ -8,14 +8,21 @@ use std::{
 
 const PARTITIONS_FILE: &str = "/proc/partitions";
 
-#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, Error, Hash, PartialEq)]
 pub enum EntryError {
+    #[error(display = "major is not a number")]
     NanMajor,
+    #[error(display = "minor is not a number")]
     NanMinor,
+    #[error(display = "blocks is not a number")]
     NanBlocks,
+    #[error(display = "major field was not found")]
     NoMajor,
+    #[error(display = "minor field was not found")]
     NoMinor,
+    #[error(display = "blocks field was not found")]
     NoBlocks,
+    #[error(display = "name field was not found")]
     NoName,
 }
 

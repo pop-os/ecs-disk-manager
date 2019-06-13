@@ -9,6 +9,7 @@ blkid = { git = "https://github.com/pop-os/blkid" }
 lvmdbus1 = { path = "../lvmdbus1" }
 disk-types = { path = "../disk-types" }
 dbus = "0.6.4"
+err-derive = "0.1.5"
 
 [dev-dependencies]
 prettytable-rs = "0.8.0"

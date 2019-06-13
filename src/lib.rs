@@ -1,9 +1,12 @@
+#[macro_use]
+extern crate err_derive;
+
 mod builder;
 mod entity;
 mod systems;
 
 use disk_prober::{
-    slaves_iter, BlockProbeError, BlockProber, DeviceVariant, VgProbeError, VgProber,
+    slaves_iter, BlockProbeError, BlockProber, DeviceVariant, LvmProbeError, LvmProber,
 };
 use disk_types::*;
 use slotmap::*;
@@ -24,12 +27,17 @@ pub use slotmap::DefaultKey as Entity;
 #[derive(Debug, Copy, Clone, Eq, Hash, PartialEq)]
 pub struct VgEntity(pub(crate) u32);
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum DiskError {
+    #[error(display = "disk operations cancelled by caller")]
     Cancelled,
+    #[error(display = "block device probing failed: {}", _0)]
     BlockProber(BlockProbeError),
+    #[error(display = "device has unknown file system: {}", _0)]
     UnknownFS(Box<str>),
-    VgProber(VgProbeError),
+    #[error(display = "lvm device probing failed: {}", _0)]
+    LvmProber(LvmProbeError),
+    #[error(display = "failed to move partition ({:?}): {}", _0, _1)]
     Remove(Box<Path>, io::Error),
 }
 

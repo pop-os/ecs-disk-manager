@@ -113,7 +113,7 @@ mod linux {
     }
 
     fn associate_vgs(world: &mut DiskManager) -> Result<(), DiskError> {
-        let vg_prober = VgProber::new().map_err(DiskError::VgProber)?;
+        let vg_prober = LvmProber::new().map_err(DiskError::LvmProber)?;
 
         let &mut DiskComponents {
             ref device_maps,
@@ -126,7 +126,7 @@ mod linux {
         } = &mut world.components;
 
         for vg in vg_prober.iter() {
-            let vg = vg.map_err(DiskError::VgProber)?;
+            let vg = vg.map_err(DiskError::LvmProber)?;
 
             let vg_entity = vgs.insert(LvmVg {
                 name:         vg.name.clone().into(),

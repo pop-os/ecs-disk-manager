@@ -3,7 +3,11 @@ use ecs_disk_manager::*;
 
 fn main() {
     let mut manager = DiskManager::default();
-    manager.scan().unwrap();
+
+    if let Err(why) = manager.scan() {
+        eprintln!("failed to scan devices: {}", why);
+        return;
+    }
 
     for entity in manager.devices() {
         let device = entity.device();
@@ -38,12 +42,13 @@ fn main() {
         }
 
         if let Some(partition) = entity.partition() {
-            print_partition("  ", partition);
+            print_partition("  ", device, partition);
         } else {
             for child in entity.children() {
-                println!("  child: {}", child.device().name);
+                let child_device = child.device();
+                println!("  child: {}", child_device.name);
                 if let Some(partition) = child.partition() {
-                    print_partition("    ", partition);
+                    print_partition("    ", child_device, partition);
                 }
             }
         }
@@ -54,8 +59,9 @@ fn main() {
     }
 }
 
-fn print_partition(padding: &str, partition: &Partition) {
+fn print_partition(padding: &str, partition_device: &Device, partition: &Partition) {
     println!("{}offset: {}", padding, partition.offset);
+    println!("{}length: {}", padding, partition_device.sectors);
     println!("{}number: {}", padding, partition.number);
 
     if let Some(fs) = partition.filesystem {

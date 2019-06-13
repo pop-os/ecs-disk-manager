@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate err_derive;
+
 mod block;
 mod partitions;
 
@@ -8,50 +11,56 @@ use std::{fs, io, path::PathBuf};
 
 use lvmdbus1::{LvConn, LvmConn, LvmPath, PvConn, VgConn};
 
-#[derive(Debug)]
-pub enum VgProbeError {
-    Dbus(dbus::Error),
+#[derive(Debug, Error)]
+#[error(display = "LVM probe error")]
+pub struct LvmProbeError {
+    #[error(cause)]
+    cause: lvmdbus1::Error,
 }
 
-pub struct VgProber(VgConn);
+impl From<lvmdbus1::Error> for LvmProbeError {
+    fn from(cause: lvmdbus1::Error) -> Self { LvmProbeError { cause } }
+}
 
-impl VgProber {
-    pub fn new() -> Result<Self, VgProbeError> {
-        VgConn::new().map_err(VgProbeError::Dbus).map(Self)
+pub struct LvmProber(VgConn);
+
+impl LvmProber {
+    pub fn new() -> Result<Self, LvmProbeError> {
+        VgConn::new().map(Self).map_err(LvmProbeError::from)
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = Result<VgInfo, VgProbeError>> + 'a {
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = Result<VgInfo, LvmProbeError>> + 'a {
         self.0.iter().map(|vg| {
             Ok(VgInfo {
-                name:         vg.name().map_err(VgProbeError::Dbus)?,
-                extent_size:  vg.extent_size_bytes().map_err(VgProbeError::Dbus)?,
-                extents:      vg.extent_count().map_err(VgProbeError::Dbus)?,
-                extents_free: vg.extent_free_count().map_err(VgProbeError::Dbus)?,
+                name:         vg.name()?,
+                extent_size:  vg.extent_size_bytes()?,
+                extents:      vg.extent_count()?,
+                extents_free: vg.extent_free_count()?,
                 pvs:          vg
                     .pvs()
                     .map(|path| {
-                        let conn = PvConn::new().map_err(VgProbeError::Dbus)?;
+                        let conn = PvConn::new()?;
                         let pv = conn.connect_with_path(path);
 
-                        Ok(LvmPv {
-                            path: PathBuf::from(pv.name().map_err(VgProbeError::Dbus)?).into(),
-                            uuid: pv.uuid().map_err(VgProbeError::Dbus)?.into(),
-                        })
+                        let path = pv.name()?;
+                        let uuid = pv.uuid()?;
+
+                        Ok(LvmPv { path: PathBuf::from(path).into(), uuid: uuid.into() })
                     })
-                    .collect::<Result<_, VgProbeError>>()?,
+                    .collect::<Result<_, lvmdbus1::Error>>()?,
                 lvs:          vg
                     .lvs()
                     .map(|path| {
-                        let conn = LvConn::new().map_err(VgProbeError::Dbus)?;
+                        let conn = LvConn::new()?;
                         let lv = conn.connect_with_path(path);
 
                         Ok(LvmLv {
-                            name: lv.name().map_err(VgProbeError::Dbus)?.into(),
-                            uuid: lv.uuid().map_err(VgProbeError::Dbus)?.into(),
-                            path: lv.path().map_err(VgProbeError::Dbus)?.into(),
+                            name: lv.name()?.into(),
+                            uuid: lv.uuid()?.into(),
+                            path: lv.path()?.into(),
                         })
                     })
-                    .collect::<Result<_, VgProbeError>>()?,
+                    .collect::<Result<_, lvmdbus1::Error>>()?,
             })
         })
     }
