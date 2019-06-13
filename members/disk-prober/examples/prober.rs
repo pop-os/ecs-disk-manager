@@ -23,7 +23,7 @@ fn main() {
         "PARTLABEL"
     ]);
 
-    let prober = Prober::new().unwrap();
+    let prober = BlockProber::new().unwrap();
     for probed_res in prober.into_iter().filter_map(Result::transpose) {
         match probed_res {
             Ok(probed) => match probed.probe() {

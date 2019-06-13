@@ -6,22 +6,35 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum BlockProbeError {
-    Io(io::Error),
-    Utf8Device,
-    BlkId(BlkIdError),
+    #[error(display = "failed to parse entry in partitions file: {}", _0)]
     Entry(EntryError),
+    #[error(display = "did not find partition {} in partition list", _0)]
     GetPartition(u32),
+    #[error(display = "A loopback device was found that did not have a backing file: {}", _0)]
     LoopWithoutBackingFile(io::Error),
+    #[error(display = "a device map was discovered that did not have a name: {}", _0)]
     MapWithoutName(io::Error),
-    PartitionNo(BlkIdError),
+    #[error(display = "failed to probe partition of device: {}", _0)]
     PartitionNew(BlkIdError),
+    #[error(display = "failed to get partition number of partition device: {}", _0)]
+    PartitionNo(BlkIdError),
+    #[error(display = "failed to probe partition of device: {}", _0)]
     PartitionProbe(BlkIdError),
-    Probe(BlkIdError),
+    #[error(display = "failed to read partitions file: {}", _0)]
+    PartitionsFile(io::Error),
+    #[error(display = "failed to commit full probe on device: {}", _0)]
+    ProbeFull(BlkIdError),
+    #[error(display = "failed to probe device: {}", _0)]
+    ProbeNew(BlkIdError),
+    #[error(display = "failed to get num of sectors on device: {}", _0)]
     Sectors(BlkIdError),
+    #[error(display = "failed to get size of device: {}", _0)]
     Size(BlkIdError),
+    #[error(display = "failed to get topology of device: {}", _0)]
     Topology(BlkIdError),
+    #[error(display = "device with unknown partition table: {}", _0)]
     UnknownTable(Box<str>),
 }
 
@@ -29,7 +42,7 @@ pub struct BlockProber(PartitionsFile);
 
 impl BlockProber {
     pub fn new() -> Result<Self, BlockProbeError> {
-        PartitionsFile::new().map(Self).map_err(BlockProbeError::Io)
+        PartitionsFile::new().map(Self).map_err(BlockProbeError::PartitionsFile)
     }
 }
 
@@ -54,7 +67,7 @@ impl<'a> Iterator for BlockProberIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next().map(|result| {
             result.map_err(BlockProbeError::Entry).and_then(|(entry, path)| {
-                let probe = Probe::new_from(&path).map_err(BlockProbeError::BlkId)?;
+                let probe = Probe::new_from(&path).map_err(BlockProbeError::ProbeNew)?;
                 if probe.is_wholedisk().unwrap_or(false) {
                     Ok(Some(Probed { entry, path, probe }))
                 } else {
@@ -73,7 +86,7 @@ pub struct Probed<'a> {
 
 impl<'a> Probed<'a> {
     pub fn probe<'b>(&'b self) -> Result<ProbeInfo<'a, 'b>, BlockProbeError> {
-        self.probe.probe_full().map_err(BlockProbeError::Probe)?;
+        self.probe.probe_full().map_err(BlockProbeError::ProbeFull)?;
 
         let size = self.probe.get_size().map_err(BlockProbeError::Size)?;
         let sectors = self.probe.get_sectors().map_err(BlockProbeError::Sectors)?;
