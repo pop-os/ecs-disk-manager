@@ -36,10 +36,15 @@ pub trait LvmConn<'a>: Sized {
     }
 
     fn connect_with_path(&'a self, path: dbus::Path<'a>) -> Self::Item {
-        let node = path
+        let mut string = path
             .as_cstr()
             .to_str()
-            .expect("path is not UTF-8")
+            .expect("path is not UTF-8");
+
+        let slice_at = string.rfind('/').expect("node path without '/'");
+        string = &string[slice_at + 1..];
+
+        let node = string
             .parse::<u32>()
             .expect("path is not a valid node");
         Self::Item::from_path(self.conn().with_path(Self::DEST, path, 1000), node)
