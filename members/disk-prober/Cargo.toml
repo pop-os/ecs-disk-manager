@@ -6,7 +6,9 @@ edition = "2018"
 
 [dependencies]
 blkid = { git = "https://github.com/pop-os/blkid" }
-disk-types = { path = "../types" }
+lvmdbus1 = { path = "../lvmdbus1" }
+disk-types = { path = "../disk-types" }
+dbus = "0.6.4"
 
 [dev-dependencies]
 prettytable-rs = "0.8.0"

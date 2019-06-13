@@ -1,11 +1,13 @@
-use dbus::{self, arg, BusType, Connection, ConnPath};
-use dbus::stdintf::org_freedesktop_dbus::Properties;
-use dbus::stdintf::org_freedesktop_dbus::Introspectable;
 use crate::{LvmConn, LvmPath, Nodes};
+use dbus::{
+    self, arg,
+    stdintf::org_freedesktop_dbus::{Introspectable, Properties},
+    BusType, ConnPath, Connection,
+};
 use std::path::PathBuf;
 
 pub struct LvConn {
-    conn: Connection
+    conn: Connection,
 }
 
 impl LvConn {
@@ -14,11 +16,7 @@ impl LvConn {
     }
 
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = LvPath<'a>> {
-        let path = self.conn.with_path(
-            "com.redhat.lvmdbus1",
-            "/com/redhat/lvmdbus1/Lv",
-            1000
-        );
+        let path = self.conn.with_path("com.redhat.lvmdbus1", "/com/redhat/lvmdbus1/Lv", 1000);
 
         path.introspect()
             .map_err(|why| {
@@ -34,16 +32,16 @@ impl LvConn {
 }
 
 impl<'a> LvmConn<'a> for LvConn {
+    type Item = LvPath<'a>;
+
     const DEST: &'static str = "com.redhat.lvmdbus1";
     const OBJECT: &'static str = "/com/redhat/lvmdbus1/Vg";
-
-    type Item = LvPath<'a>;
 
     fn conn(&self) -> &Connection { &self.conn }
 }
 
 pub struct LvPath<'a> {
-    conn: ConnPath<'a, &'a Connection>
+    conn: ConnPath<'a, &'a Connection>,
 }
 
 impl<'a> LvPath<'a> {
@@ -51,13 +49,9 @@ impl<'a> LvPath<'a> {
         self.conn.get::<String>(Self::PATH, "Path").map(PathBuf::from)
     }
 
-    pub fn size_bytes(&self) -> Result<u64, dbus::Error> {
-        self.conn.get(Self::PATH, "SizeBytes")
-    }
+    pub fn size_bytes(&self) -> Result<u64, dbus::Error> { self.conn.get(Self::PATH, "SizeBytes") }
 
-    pub fn vg(&self) -> Result<dbus::Path, dbus::Error> {
-        self.conn.get(Self::PATH, "Vg")
-    }
+    pub fn vg(&self) -> Result<dbus::Path, dbus::Error> { self.conn.get(Self::PATH, "Vg") }
 }
 
 impl<'a> LvmPath<'a> for LvPath<'a> {
