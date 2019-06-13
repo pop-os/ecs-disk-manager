@@ -9,6 +9,53 @@ fn main() {
         return;
     }
 
+    // list_by_device(&manager);
+    list_by_disk(&manager);
+    list_by_vg(&manager);
+}
+
+fn list_by_disk(manager: &DiskManager) {
+    for (entity, disk) in manager.disks() {
+        let disk_device = entity.device();
+
+        println!("Disk: {}", disk_device.name);
+        println!("  Sector Size: {}", disk_device.logical_sector_size);
+        println!("  Sectors:     {}", disk_device.sectors);
+        match entity.partition() {
+            Some(partition) => print_partition("  ", disk_device, partition),
+            None => {
+                for child in entity.children() {
+                    let child_device = child.device();
+                    println!("  child: {}", child_device.name);
+                    if let Some(partition) = child.partition() {
+                        print_partition("    ", child_device, partition);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn list_by_vg(manager: &DiskManager) {
+    for (entity, vg) in manager.lvm_volume_groups() {
+        println!("VG: {}", vg.name);
+
+        println!("  Extent Size:  {}", vg.extent_size);
+        println!("  Extents:      {}", vg.extents);
+        println!("  Extents Free: {}", vg.extents_free);
+        for (lv_entity, lv) in manager.lvm_lvs_of_vg(entity) {
+            let device = lv_entity.device();
+            let partition = lv_entity.partition().expect("LV that isn't a partition");
+
+            println!("    Path:        {}", lv.path.display());
+            println!("    Sector Size: {}", device.logical_sector_size);
+            println!("    Offset:      {}", partition.offset);
+            println!("    Length:      {}", device.sectors);
+        }
+    }
+}
+
+fn list_by_device(manager: &DiskManager) {
     for entity in manager.devices() {
         let device = entity.device();
         println!("{}", device.name);

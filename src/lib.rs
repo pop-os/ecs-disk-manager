@@ -43,15 +43,15 @@ pub enum DiskError {
 
 #[derive(Debug, Default)]
 pub struct DiskManager {
-    entities: HopSlotMap<Entity, ()>,
+    pub entities: HopSlotMap<Entity, ()>,
     // Components representing current data on devices.
-    components: DiskComponents,
+    pub components: DiskComponents,
     // Operations that will be carried out when systems are invoked
     ops: DiskOps,
 }
 
 #[derive(Debug, Default)]
-struct DiskComponents {
+pub struct DiskComponents {
     // Components for disk entities
 
     // Devices that contain children will associate their children here.
@@ -158,6 +158,30 @@ impl DiskManager {
         })
     }
 
+    pub fn lvm_volume_groups<'a>(
+        &'a self,
+    ) -> impl Iterator<Item = (VgEntity, &'a LvmVg)> {
+        self.components.vgs.iter()
+    }
+
+    pub fn lvm_pvs_of_vg<'a>(
+        &'a self,
+        entity: VgEntity
+    ) -> impl Iterator<Item = (DeviceEntity<'a>, &'a LvmPv)> {
+        self.components.pvs.iter()
+            .filter(move |(_, (_, pv))| *pv == Some(entity))
+            .map(move |(id, (pv, _))| (DeviceEntity { id, ctx: self }, pv))
+    }
+
+    pub fn lvm_lvs_of_vg<'a>(
+        &'a self,
+        entity: VgEntity
+    ) -> impl Iterator<Item = (DeviceEntity<'a>, &'a LvmLv)> {
+        self.components.lvs.iter()
+            .filter(move |(_, (_, lv))| *lv == entity)
+            .map(move |(id, (pv, _))| (DeviceEntity { id, ctx: self }, pv))
+    }
+
     /// Some device entities are partitions.
     pub fn partitions<'a>(
         &'a self,
@@ -193,6 +217,12 @@ impl VolumeGroupShare {
     pub fn insert(&mut self, input: LvmVg) -> VgEntity {
         self.0.push(input);
         VgEntity((self.0.len() - 1) as u32)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (VgEntity, &LvmVg)> {
+        self.0.iter().enumerate().map(|(id, entity)| {
+            (VgEntity(id as u32), entity)
+        })
     }
 
     pub fn get(&self, index: VgEntity) -> &LvmVg { &self.0[index.0 as usize] }
