@@ -5,21 +5,19 @@ mod lv;
 mod pv;
 mod vg;
 
-pub use self::vg::*;
-pub use self::lv::*;
-pub use self::pv::*;
+pub use self::{lv::*, pv::*, vg::*};
 
 use dbus::stdintf::org_freedesktop_dbus::Properties;
 
 #[derive(Deserialize)]
 struct Nodes {
     #[serde(rename = "node", default)]
-    nodes: Vec<Node>
+    nodes: Vec<Node>,
 }
 
 #[derive(Deserialize)]
 struct Node {
-    name: String
+    name: String,
 }
 
 pub trait LvmConn<'a>: Sized {
@@ -47,11 +45,7 @@ pub trait LvmPath<'a>: Sized {
 
     fn from_path(path: dbus::ConnPath<'a, &'a dbus::Connection>) -> Self;
 
-    fn name(&self) -> Result<String, dbus::Error> {
-        self.conn().get(Self::PATH, "Name")
-    }
+    fn name(&self) -> Result<String, dbus::Error> { self.conn().get(Self::PATH, "Name") }
 
-    fn uuid(&self) -> Result<String, dbus::Error> {
-        self.conn().get(Self::PATH, "Uuid")
-    }
+    fn uuid(&self) -> Result<String, dbus::Error> { self.conn().get(Self::PATH, "Uuid") }
 }

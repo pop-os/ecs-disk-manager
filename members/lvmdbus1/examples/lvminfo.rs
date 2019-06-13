@@ -1,6 +1,6 @@
 extern crate lvmdbus1;
 
-use lvmdbus1::{LvmConn, LvmPath, LvConn, PvConn, VgConn};
+use lvmdbus1::{LvConn, LvmConn, LvmPath, PvConn, VgConn};
 
 fn main() {
     let interface = VgConn::new().unwrap();

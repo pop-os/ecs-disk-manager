@@ -9,12 +9,17 @@ members = [
 	"members/cryptsetup",
 	"members/cryptsetup/sys",
 	"members/lvmdbus1",
-	"members/prober",
-	"members/types"
+	"members/disk-ops",
+	"members/disk-prober",
+	"members/disk-types",
 ]
 
 [dependencies]
-disk-prober = { path = "members/prober" }
-disk-types = { path = "members/types" }
+cryptsetup = { path = "members/cryptsetup" }
+disk-ops = { path = "members/disk-ops" }
+disk-prober = { path = "members/disk-prober" }
+disk-types = { path = "members/disk-types" }
+lvmdbus1 = { path = "members/lvmdbus1" }
 slotmap = "0.3.0"
 secstr = "0.3.2"
+rayon = "1.0.3"

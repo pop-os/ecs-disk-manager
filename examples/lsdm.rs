@@ -1,4 +1,4 @@
-use disk_types::prelude::*;
+use disk_types::*;
 use ecs_disk_manager::*;
 
 fn main() {
@@ -15,10 +15,19 @@ fn main() {
 
         if let Some(dm_name) = entity.device_map_name() {
             println!("  dm_name: {}", dm_name);
-            if let Some(lvm) = entity.lvm() {
-                println!("  vg: {}", lvm.volume_group);
+            if let Some((vg, lv)) = entity.lv() {
+                println!("  lv: {}", lv.name);
+                println!("  vg_parent: {}", vg.name);
+                println!("    extent_size: {}", vg.extent_size);
+                println!("    extents: {}", vg.extents);
+                println!("    extents_free: {}", vg.extents_free);
+            } else if let Some((vg, pv)) = entity.pv() {
+                println!("  pv: {:?}", pv.path);
+                if let Some(vg) = vg {
+                    println!("  vg_child: {}", vg.name);
+                }
             } else if let Some(luks) = entity.luks() {
-                println!("  pv: {}", luks.physical_volume);
+                println!("  luks_pv: {}", luks.physical_volume);
             }
         } else if let Some(backing_file) = entity.backing_file() {
             println!("  backing_file: {}", backing_file.display());

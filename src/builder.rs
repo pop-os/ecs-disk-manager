@@ -1,4 +1,4 @@
-use disk_types::prelude::{FileSystem, Sector};
+use disk_types::{FileSystem, Sector};
 use secstr::SecStr;
 
 #[derive(Clone, Debug)]

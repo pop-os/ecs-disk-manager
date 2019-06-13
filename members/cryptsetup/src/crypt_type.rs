@@ -1,9 +1,7 @@
 pub struct CryptTypeStr<'a>(pub(crate) &'a str);
 
 impl<'a> CryptTypeStr<'a> {
-    pub fn as_str(&self) -> &str {
-        self.0
-    }
+    pub fn as_str(&self) -> &str { self.0 }
 }
 
 #[derive(Debug, Copy, Clone, Eq, Hash, PartialEq)]
@@ -17,7 +15,7 @@ impl<'a> From<CryptTypeStr<'a>> for CryptType {
         match string.as_str() {
             "LUKS1" => CryptType::Luks1,
             "LUKS2" => CryptType::Luks2,
-            string => panic!("unknown type string: {}", string)
+            string => panic!("unknown type string: {}", string),
         }
     }
 }

@@ -1,11 +1,13 @@
-use dbus::{self, arg, BusType, Connection, ConnPath};
-use dbus::stdintf::org_freedesktop_dbus::Properties;
-use dbus::stdintf::org_freedesktop_dbus::Introspectable;
+use dbus::{
+    self, arg,
+    stdintf::org_freedesktop_dbus::{Introspectable, Properties},
+    BusType, ConnPath, Connection,
+};
 
 use crate::{LvmConn, LvmPath, Nodes, PvConn, PvPath};
 
 pub struct VgConn {
-    conn: Connection
+    conn: Connection,
 }
 
 impl VgConn {
@@ -14,11 +16,7 @@ impl VgConn {
     }
 
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = VgPath<'a>> {
-        let path = self.conn.with_path(
-            "com.redhat.lvmdbus1",
-            "/com/redhat/lvmdbus1/Vg",
-            1000
-        );
+        let path = self.conn.with_path("com.redhat.lvmdbus1", "/com/redhat/lvmdbus1/Vg", 1000);
 
         path.introspect()
             .map_err(|why| {
@@ -34,15 +32,15 @@ impl VgConn {
 }
 
 impl<'a> LvmConn<'a> for VgConn {
+    type Item = VgPath<'a>;
+
     const DEST: &'static str = "com.redhat.lvmdbus1";
     const OBJECT: &'static str = "/com/redhat/lvmdbus1/Vg";
-
-    type Item = VgPath<'a>;
 
     fn conn(&self) -> &Connection { &self.conn }
 }
 pub struct VgPath<'a> {
-    conn: ConnPath<'a, &'a Connection>
+    conn: ConnPath<'a, &'a Connection>,
 }
 
 impl<'a> VgPath<'a> {
@@ -58,23 +56,21 @@ impl<'a> VgPath<'a> {
         self.conn.get(Self::PATH, "FreeCount")
     }
 
-    pub fn lv_count(&self) -> Result<u64, dbus::Error> {
-        self.conn.get(Self::PATH, "LvCount")
-    }
+    pub fn lv_count(&self) -> Result<u64, dbus::Error> { self.conn.get(Self::PATH, "LvCount") }
 
     pub fn lvs(&self) -> impl Iterator<Item = dbus::Path> {
-        self.conn.get::<Vec<dbus::Path>>(Self::PATH, "Lvs")
+        self.conn
+            .get::<Vec<dbus::Path>>(Self::PATH, "Lvs")
             .ok()
             .into_iter()
             .flat_map(|paths| paths.into_iter())
     }
 
-    pub fn pv_count(&self) -> Result<u64, dbus::Error> {
-        self.conn.get(Self::PATH, "PvCount")
-    }
+    pub fn pv_count(&self) -> Result<u64, dbus::Error> { self.conn.get(Self::PATH, "PvCount") }
 
     pub fn pvs(&self) -> impl Iterator<Item = dbus::Path> {
-        self.conn.get::<Vec<dbus::Path>>(Self::PATH, "Pvs")
+        self.conn
+            .get::<Vec<dbus::Path>>(Self::PATH, "Pvs")
             .ok()
             .into_iter()
             .flat_map(|paths| paths.into_iter())

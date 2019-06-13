@@ -1,10 +1,12 @@
-use dbus::{self, arg, BusType, Connection, ConnPath};
-use dbus::stdintf::org_freedesktop_dbus::Properties;
-use dbus::stdintf::org_freedesktop_dbus::Introspectable;
 use crate::{LvmConn, LvmPath, Nodes};
+use dbus::{
+    self, arg,
+    stdintf::org_freedesktop_dbus::{Introspectable, Properties},
+    BusType, ConnPath, Connection,
+};
 
 pub struct PvConn {
-    conn: Connection
+    conn: Connection,
 }
 
 impl PvConn {
@@ -13,11 +15,7 @@ impl PvConn {
     }
 
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = PvPath<'a>> {
-        let path = self.conn.with_path(
-            "com.redhat.lvmdbus1",
-            "/com/redhat/lvmdbus1/Pv",
-            1000
-        );
+        let path = self.conn.with_path("com.redhat.lvmdbus1", "/com/redhat/lvmdbus1/Pv", 1000);
 
         path.introspect()
             .map_err(|why| {
@@ -33,26 +31,16 @@ impl PvConn {
 }
 
 impl<'a> LvmConn<'a> for PvConn {
+    type Item = PvPath<'a>;
+
     const DEST: &'static str = "com.redhat.lvmdbus1";
     const OBJECT: &'static str = "/com/redhat/lvmdbus1/Vg";
-
-    type Item = PvPath<'a>;
 
     fn conn(&self) -> &Connection { &self.conn }
 }
 
 pub struct PvPath<'a> {
-    conn: ConnPath<'a, &'a Connection>
-}
-
-impl<'a> PvPath<'a> {
-    pub fn name(&self) -> Result<String, dbus::Error> {
-        self.conn.get::<String>("com.redhat.lvmdbus1.Pv", "Name")
-    }
-
-    pub fn uuid(&self) -> Result<String, dbus::Error> {
-        self.conn.get("com.redhat.lvmdbus1.Pv", "Uuid")
-    }
+    conn: ConnPath<'a, &'a Connection>,
 }
 
 impl<'a> LvmPath<'a> for PvPath<'a> {
