@@ -83,10 +83,10 @@ pub struct DiskComponents {
 
 #[derive(Debug, Default)]
 struct DiskOps {
-    pub create:  Vec<(Entity, PartitionBuilder)>,
-    pub format:  HashMap<Entity, FileSystem>,
+    pub create: Vec<(Entity, PartitionBuilder)>,
+    pub format: HashMap<Entity, FileSystem>,
     pub mklabel: HashMap<Entity, PartitionTable>,
-    pub remove:  HashSet<Entity>,
+    pub remove: HashSet<Entity>,
 }
 
 impl DiskOps {
@@ -121,6 +121,15 @@ impl DiskManager {
     /// Fetches a device entity by its entity ID.
     pub fn device(&self, entity: Entity) -> &Device {
         self.components.devices.get(entity).expect("invalid device entity; report this as a bug")
+    }
+
+    /// Find a device by its path.
+    pub fn device_by_path(&self, path: &Path) -> Option<(DeviceEntity, &Device)> {
+        self.components
+            .devices
+            .iter()
+            .find(|(_, device)| device.path.as_ref() == path)
+            .map(move |(id, device)| (DeviceEntity { id, ctx: self }, device))
     }
 
     /// All entities are device entities in the world.
@@ -158,26 +167,28 @@ impl DiskManager {
         })
     }
 
-    pub fn lvm_volume_groups<'a>(
-        &'a self,
-    ) -> impl Iterator<Item = (VgEntity, &'a LvmVg)> {
+    pub fn lvm_volume_groups<'a>(&'a self) -> impl Iterator<Item = (VgEntity, &'a LvmVg)> {
         self.components.vgs.iter()
     }
 
     pub fn lvm_pvs_of_vg<'a>(
         &'a self,
-        entity: VgEntity
+        entity: VgEntity,
     ) -> impl Iterator<Item = (DeviceEntity<'a>, &'a LvmPv)> {
-        self.components.pvs.iter()
+        self.components
+            .pvs
+            .iter()
             .filter(move |(_, (_, pv))| *pv == Some(entity))
             .map(move |(id, (pv, _))| (DeviceEntity { id, ctx: self }, pv))
     }
 
     pub fn lvm_lvs_of_vg<'a>(
         &'a self,
-        entity: VgEntity
+        entity: VgEntity,
     ) -> impl Iterator<Item = (DeviceEntity<'a>, &'a LvmLv)> {
-        self.components.lvs.iter()
+        self.components
+            .lvs
+            .iter()
             .filter(move |(_, (_, lv))| *lv == entity)
             .map(move |(id, (pv, _))| (DeviceEntity { id, ctx: self }, pv))
     }
@@ -212,7 +223,9 @@ impl DiskManager {
 pub struct VolumeGroupShare(Vec<LvmVg>);
 
 impl VolumeGroupShare {
-    pub fn clear(&mut self) { self.0.clear(); }
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
 
     pub fn insert(&mut self, input: LvmVg) -> VgEntity {
         self.0.push(input);
@@ -220,10 +233,10 @@ impl VolumeGroupShare {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (VgEntity, &LvmVg)> {
-        self.0.iter().enumerate().map(|(id, entity)| {
-            (VgEntity(id as u32), entity)
-        })
+        self.0.iter().enumerate().map(|(id, entity)| (VgEntity(id as u32), entity))
     }
 
-    pub fn get(&self, index: VgEntity) -> &LvmVg { &self.0[index.0 as usize] }
+    pub fn get(&self, index: VgEntity) -> &LvmVg {
+        &self.0[index.0 as usize]
+    }
 }

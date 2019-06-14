@@ -24,10 +24,6 @@ fn list_device_map(manager: &DiskManager, entity: &DeviceEntity, dm_name: &str) 
     let device = entity.device();
     println!("Device Map: {}", dm_name);
     println!("  Path:        {}", device.path.display());
-    if let Some(parent) = entity.parents().next() {
-        let device = parent.device();
-        println!("  Parent:      {}", device.path.display());
-    }
     println!("  Sector Size: {}", device.logical_sector_size);
     println!("  Sectors:     {}", device.sectors);
 
@@ -44,7 +40,7 @@ fn list_device_map(manager: &DiskManager, entity: &DeviceEntity, dm_name: &str) 
     }
 
     if let Some(partition) = entity.partition() {
-        list_partition(&manager, &entity, partition, 1);
+        list_partition(&&entity, partition, 1, false);
     }
 }
 
@@ -56,7 +52,7 @@ fn list_disk(manager: &DiskManager, entity: &DeviceEntity, disk: &Disk) {
     println!("  Sector Size: {}", disk_device.logical_sector_size);
     println!("  Sectors:     {}", disk_device.sectors);
     match entity.partition() {
-        Some(partition) => list_partition(manager, &entity, partition, 1),
+        Some(partition) => list_partition(&entity, partition, 1, false),
         None => {
             if let Some(table) = disk.table {
                 println!("  Table:       {}", <&'static str>::from(table));
@@ -64,7 +60,7 @@ fn list_disk(manager: &DiskManager, entity: &DeviceEntity, disk: &Disk) {
                     let child_device = child.device();
                     println!("  Child: {}", child_device.name);
                     if let Some(partition) = child.partition() {
-                        list_partition(manager, &child, partition, 2);
+                        list_partition(&child, partition, 2, true);
                     }
                 }
             }
@@ -82,16 +78,18 @@ fn list_by_vg(manager: &DiskManager) {
         for (lv_entity, lv) in manager.lvm_lvs_of_vg(entity) {
             let partition = lv_entity.partition().expect("LV that isn't a partition");
             println!("  Child: {}", lv.name);
-            list_partition(manager, &lv_entity, partition, 2);
+            list_partition(&lv_entity, partition, 2, true);
         }
     }
 }
 
-fn list_partition(manager: &DiskManager, entity: &DeviceEntity, partition: &Partition, level: u16) {
+fn list_partition(entity: &DeviceEntity, partition: &Partition, level: u16, path: bool) {
     let padding = "  ".repeat(level as usize);
     let device = entity.device();
 
-    println!("{}Path:        {}", padding, device.path.display());
+    if path {
+        println!("{}Path:        {}", padding, device.path.display());
+    }
     println!("{}Sector Size: {}", padding, device.logical_sector_size);
     println!("{}Offset:      {}", padding, partition.offset);
     println!("{}Length:      {}", padding, device.sectors);
@@ -119,10 +117,15 @@ fn list_partition(manager: &DiskManager, entity: &DeviceEntity, partition: &Part
         if let Some(vg) = vg {
             println!("{}VG:          {}", padding, vg.name);
         }
-    } else if let Some(FileSystem::Luks) = partition.filesystem {
-        // let child = entity.children().next().unwrap();
-        // if let Some(dm_name) = child.device_map_name() {
-        //     list_device_map(manager, &child, dm_name);
-        // }
+    }
+
+    for child in entity.children() {
+        let device = child.device();
+        println!("{}Child:       {}", padding, device.path.display());
+    }
+
+    for parent in entity.parents() {
+        let parent = parent.device();
+        println!("{}Parent:      {}", padding, parent.path.display());
     }
 }
