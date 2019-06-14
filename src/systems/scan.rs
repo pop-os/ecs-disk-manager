@@ -18,10 +18,10 @@ mod linux {
             world.components.devices.insert(
                 whole_entity,
                 Device {
-                    name:                 Box::from(info.device),
-                    path:                 Box::from(info.path),
-                    sectors:              info.sectors,
-                    logical_sector_size:  info.logical_sector_size,
+                    name: Box::from(info.device),
+                    path: Box::from(info.path),
+                    sectors: info.sectors,
+                    logical_sector_size: info.logical_sector_size,
                     physical_sector_size: info.physical_sector_size,
                 },
             );
@@ -42,13 +42,13 @@ mod linux {
                 world.components.partitions.insert(
                     whole_entity,
                     Partition {
-                        offset:      0,
-                        number:      0,
-                        filesystem:  fstype.parse().ok(),
-                        partuuid:    None,
-                        partlabel:   None,
+                        offset: 0,
+                        number: 0,
+                        filesystem: fstype.parse().ok(),
+                        partuuid: None,
+                        partlabel: None,
                         mbr_variant: PartitionType::Primary,
-                        uuid:        info.uuid,
+                        uuid: info.uuid,
                     },
                 );
             }
@@ -63,10 +63,10 @@ mod linux {
                 world.components.devices.insert(
                     part_entity,
                     Device {
-                        name:                 partition.device,
-                        path:                 partition.path,
-                        sectors:              partition.sectors,
-                        logical_sector_size:  info.logical_sector_size,
+                        name: partition.device,
+                        path: partition.path,
+                        sectors: partition.sectors,
+                        logical_sector_size: info.logical_sector_size,
                         physical_sector_size: info.physical_sector_size,
                     },
                 );
@@ -74,13 +74,13 @@ mod linux {
                 world.components.partitions.insert(
                     part_entity,
                     Partition {
-                        offset:      partition.offset,
-                        number:      partition.no,
-                        filesystem:  partition.fstype.and_then(|fstype| fstype.parse().ok()),
-                        partuuid:    partition.partuuid,
-                        partlabel:   partition.partlabel,
+                        offset: partition.offset,
+                        number: partition.no,
+                        filesystem: partition.fstype.and_then(|fstype| fstype.parse().ok()),
+                        partuuid: partition.partuuid,
+                        partlabel: partition.partlabel,
                         mbr_variant: PartitionType::Primary,
-                        uuid:        partition.uuid,
+                        uuid: partition.uuid,
                     },
                 );
             }
@@ -88,23 +88,38 @@ mod linux {
             world.components.children.insert(whole_entity, children);
         }
 
-        associate_slaves(world);
-        associate_vgs(world)?;
+        associate_parents_and_their_children(world);
+
+        if let Err(why) = associate_lvm_devices(world) {
+            eprintln!("failed to associate lvm devices: {}", why);
+            eprintln!("    is the lvmdbus1 daemon installed?");
+        }
 
         Ok(())
     }
 
-    fn associate_slaves(world: &mut DiskManager) {
-        let devices = &world.components.devices;
-        let parents = &mut world.components.parents;
+    fn associate_parents_and_their_children(world: &mut DiskManager) {
+        let &mut DiskComponents { ref devices, ref mut children, ref mut parents, .. } =
+            &mut world.components;
 
         for (entity, device) in devices {
             for slave in slaves_iter(&device.name) {
                 for (other_entity, other_device) in devices {
                     if other_device.name == slave {
+                        println!(
+                            "mapping parent-child association: {} <-> {}",
+                            device.path.display(),
+                            other_device.path.display()
+                        );
+
                         match parents.get_mut(entity) {
                             Some(associations) => associations.push(other_entity),
                             None => drop(parents.insert(entity, vec![other_entity])),
+                        }
+
+                        match children.get_mut(other_entity) {
+                            Some(associations) => associations.push(entity),
+                            None => drop(children.insert(other_entity, vec![entity])),
                         }
                     }
                 }
@@ -112,8 +127,8 @@ mod linux {
         }
     }
 
-    fn associate_vgs(world: &mut DiskManager) -> Result<(), DiskError> {
-        let vg_prober = LvmProber::new().map_err(DiskError::LvmProber)?;
+    fn associate_lvm_devices(world: &mut DiskManager) -> Result<(), DiskError> {
+        let lvm_prober = LvmProber::new().map_err(DiskError::LvmProber)?;
 
         let &mut DiskComponents {
             ref device_maps,
@@ -125,18 +140,41 @@ mod linux {
             ..
         } = &mut world.components;
 
-        for vg in vg_prober.iter() {
+        let mut found_pvs = Vec::new();
+
+        let mut append_pv = |vg_entity, node: u32, pv: LvmPv| {
+            let pv_dm_name = pv.path.file_name().expect("PV without name");
+            for entity in partitions.keys() {
+                if let Some(dm_name) = device_maps.get(entity) {
+                    if pv_dm_name == dm_name.as_ref() {
+                        if !found_pvs.iter().any(|&pv| pv == node) {
+                            found_pvs.push(node);
+                            let device = devices.get(entity).unwrap();
+                            eprintln!(
+                                "associating {} to {}",
+                                pv.path.display(),
+                                device.path.display()
+                            );
+                            pvs.insert(entity, (pv.clone(), vg_entity));
+                        }
+                        break;
+                    }
+                }
+            }
+        };
+
+        for vg in lvm_prober.iter_vgs() {
             let vg = vg.map_err(DiskError::LvmProber)?;
 
             let vg_entity = vgs.insert(LvmVg {
-                name:         vg.name.clone().into(),
-                extent_size:  vg.extent_size,
-                extents:      vg.extents,
+                name: vg.name.clone().into(),
+                extent_size: vg.extent_size,
+                extents: vg.extents,
                 extents_free: vg.extents_free,
             });
 
             for lv in vg.lvs {
-                let lv_path = read_link(&lv.path).expect("L path is not a symlink");
+                let lv_path = read_link(&lv.path).expect("LV path is not a symlink");
                 for entity in partitions.keys() {
                     if device_maps.contains_key(entity) {
                         let device = devices.get(entity).unwrap();
@@ -148,17 +186,14 @@ mod linux {
                 }
             }
 
-            for pv in vg.pvs {
-                let pv_dm_name = pv.path.file_name().expect("PV without name");
-                for entity in partitions.keys() {
-                    if let Some(dm_name) = device_maps.get(entity) {
-                        if pv_dm_name == dm_name.as_ref() {
-                            pvs.insert(entity, (pv.clone(), Some(vg_entity)));
-                            break;
-                        }
-                    }
-                }
+            for (node, pv) in vg.pvs {
+                append_pv(Some(vg_entity), node, pv);
             }
+        }
+
+        for result in lvm_prober.iter_pvs() {
+            let (node, pv) = result.map_err(DiskError::LvmProber)?;
+            append_pv(None, node, pv);
         }
 
         Ok(())
