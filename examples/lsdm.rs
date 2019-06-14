@@ -9,26 +9,62 @@ fn main() {
         return;
     }
 
-    // list_by_device(&manager);
-    list_by_disk(&manager);
+    for entity in manager.devices() {
+        if let Some(disk) = entity.disk() {
+            list_disk(&manager, &entity, disk);
+        } else if let Some(dm_name) = entity.device_map_name() {
+            list_device_map(&manager, &entity, dm_name);
+        }
+    }
+
     list_by_vg(&manager);
 }
 
-fn list_by_disk(manager: &DiskManager) {
-    for (entity, disk) in manager.disks() {
-        let disk_device = entity.device();
+fn list_device_map(manager: &DiskManager, entity: &DeviceEntity, dm_name: &str) {
+    let device = entity.device();
+    println!("Device Map: {}", dm_name);
+    println!("  Path:        {}", device.path.display());
+    if let Some(parent) = entity.parents().next() {
+        let device = parent.device();
+        println!("  Parent:      {}", device.path.display());
+    }
+    println!("  Sector Size: {}", device.logical_sector_size);
+    println!("  Sectors:     {}", device.sectors);
 
-        println!("Disk: {}", disk_device.name);
-        println!("  Sector Size: {}", disk_device.logical_sector_size);
-        println!("  Sectors:     {}", disk_device.sectors);
-        match entity.partition() {
-            Some(partition) => print_partition("  ", disk_device, partition),
-            None => {
+    if let Some((vg, pv)) = entity.pv() {
+        println!("  PV:          {}", pv.path.display());
+        println!("  PV UUID:     {}", pv.uuid);
+        if let Some(vg) = vg {
+            println!("  VG:          {}", vg.name);
+        }
+    } else if let Some((vg, lv)) = entity.lv() {
+        println!("  LV:          {}", lv.name);
+        println!("  LV UUID:     {}", lv.uuid);
+        println!("  VG:          {}", vg.name);
+    }
+
+    if let Some(partition) = entity.partition() {
+        list_partition(&manager, &entity, partition, 1);
+    }
+}
+
+fn list_disk(manager: &DiskManager, entity: &DeviceEntity, disk: &Disk) {
+    let disk_device = entity.device();
+
+    println!("Disk: {}", disk_device.name);
+    println!("  Path:        {}", disk_device.path.display());
+    println!("  Sector Size: {}", disk_device.logical_sector_size);
+    println!("  Sectors:     {}", disk_device.sectors);
+    match entity.partition() {
+        Some(partition) => list_partition(manager, &entity, partition, 1),
+        None => {
+            if let Some(table) = disk.table {
+                println!("  Table:       {}", <&'static str>::from(table));
                 for child in entity.children() {
                     let child_device = child.device();
-                    println!("  child: {}", child_device.name);
+                    println!("  Child: {}", child_device.name);
                     if let Some(partition) = child.partition() {
-                        print_partition("    ", child_device, partition);
+                        list_partition(manager, &child, partition, 2);
                     }
                 }
             }
@@ -44,86 +80,49 @@ fn list_by_vg(manager: &DiskManager) {
         println!("  Extents:      {}", vg.extents);
         println!("  Extents Free: {}", vg.extents_free);
         for (lv_entity, lv) in manager.lvm_lvs_of_vg(entity) {
-            let device = lv_entity.device();
             let partition = lv_entity.partition().expect("LV that isn't a partition");
-
-            println!("    Path:        {}", lv.path.display());
-            println!("    Sector Size: {}", device.logical_sector_size);
-            println!("    Offset:      {}", partition.offset);
-            println!("    Length:      {}", device.sectors);
+            println!("  Child: {}", lv.name);
+            list_partition(manager, &lv_entity, partition, 2);
         }
     }
 }
 
-fn list_by_device(manager: &DiskManager) {
-    for entity in manager.devices() {
-        let device = entity.device();
-        println!("{}", device.name);
-        println!("  path: {}", device.path.display());
-        println!("  sectors: {}", device.sectors);
-        println!("  logical_sector_size: {}", device.logical_sector_size);
-        println!("  physical_sector_size: {}", device.physical_sector_size);
+fn list_partition(manager: &DiskManager, entity: &DeviceEntity, partition: &Partition, level: u16) {
+    let padding = "  ".repeat(level as usize);
+    let device = entity.device();
 
-        if let Some(dm_name) = entity.device_map_name() {
-            println!("  dm_name: {}", dm_name);
-            if let Some((vg, lv)) = entity.lv() {
-                println!("  lv: {}", lv.name);
-                println!("  vg_parent: {}", vg.name);
-                println!("    extent_size: {}", vg.extent_size);
-                println!("    extents: {}", vg.extents);
-                println!("    extents_free: {}", vg.extents_free);
-            } else if let Some((vg, pv)) = entity.pv() {
-                println!("  pv: {:?}", pv.path);
-                if let Some(vg) = vg {
-                    println!("  vg_child: {}", vg.name);
-                }
-            } else if let Some(luks) = entity.luks() {
-                println!("  luks_pv: {}", luks.physical_volume);
-            }
-        } else if let Some(backing_file) = entity.backing_file() {
-            println!("  backing_file: {}", backing_file.display());
-        } else if let Some(disk) = entity.disk() {
-            if let Some(table) = disk.table {
-                println!("  table: {}", <&'static str>::from(table));
-            }
-        }
-
-        if let Some(partition) = entity.partition() {
-            print_partition("  ", device, partition);
-        } else {
-            for child in entity.children() {
-                let child_device = child.device();
-                println!("  child: {}", child_device.name);
-                if let Some(partition) = child.partition() {
-                    print_partition("    ", child_device, partition);
-                }
-            }
-        }
-
-        for parent in entity.parents() {
-            println!("  parent: {}", parent.device().name);
-        }
-    }
-}
-
-fn print_partition(padding: &str, partition_device: &Device, partition: &Partition) {
-    println!("{}offset: {}", padding, partition.offset);
-    println!("{}length: {}", padding, partition_device.sectors);
-    println!("{}number: {}", padding, partition.number);
+    println!("{}Path:        {}", padding, device.path.display());
+    println!("{}Sector Size: {}", padding, device.logical_sector_size);
+    println!("{}Offset:      {}", padding, partition.offset);
+    println!("{}Length:      {}", padding, device.sectors);
+    println!("{}Number:      {}", padding, partition.number);
 
     if let Some(fs) = partition.filesystem {
-        println!("{}fs: {}", padding, <&'static str>::from(fs));
+        println!("{}FS:          {}", padding, <&'static str>::from(fs));
     }
 
     if let Some(uuid) = &partition.uuid {
-        println!("{}uuid: {}", padding, uuid);
+        println!("{}UUID:        {}", padding, uuid);
     }
 
     if let Some(partuuid) = &partition.partuuid {
-        println!("{}partuuid: {}", padding, partuuid);
+        println!("{}PartUUID:    {}", padding, partuuid);
     }
 
     if let Some(partlabel) = &partition.partlabel {
-        println!("{}partlabel: {}", padding, partlabel);
+        println!("{}PartLabel:   {}", padding, partlabel);
+    }
+
+    if let Some((vg, pv)) = entity.pv() {
+        println!("{}PV:          {}", padding, pv.path.display());
+
+        if let Some(vg) = vg {
+            println!("{}VG:          {}", padding, vg.name);
+        }
+    } else if let Some(FileSystem::Luks) = partition.filesystem {
+        // let child = entity.children().next().unwrap();
+        // if let Some(dm_name) = child.device_map_name() {
+        //     list_device_map(manager, &child, dm_name);
+        // }
     }
 }
