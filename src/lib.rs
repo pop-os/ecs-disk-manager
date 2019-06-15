@@ -83,10 +83,10 @@ pub struct DiskComponents {
 
 #[derive(Debug, Default)]
 struct DiskOps {
-    pub create: Vec<(Entity, PartitionBuilder)>,
-    pub format: HashMap<Entity, FileSystem>,
+    pub create:  Vec<(Entity, PartitionBuilder)>,
+    pub format:  HashMap<Entity, FileSystem>,
     pub mklabel: HashMap<Entity, PartitionTable>,
-    pub remove: HashSet<Entity>,
+    pub remove:  HashSet<Entity>,
 }
 
 impl DiskOps {
@@ -167,14 +167,14 @@ impl DiskManager {
         })
     }
 
-    pub fn lvm_volume_groups<'a>(&'a self) -> impl Iterator<Item = (VgEntity, &'a LvmVg)> {
+    pub fn lvm_volume_groups(&self) -> impl Iterator<Item = (VgEntity, &LvmVg)> {
         self.components.vgs.iter()
     }
 
-    pub fn lvm_pvs_of_vg<'a>(
-        &'a self,
+    pub fn lvm_pvs_of_vg(
+        &self,
         entity: VgEntity,
-    ) -> impl Iterator<Item = (DeviceEntity<'a>, &'a LvmPv)> {
+    ) -> impl Iterator<Item = (DeviceEntity<'_>, &LvmPv)> {
         self.components
             .pvs
             .iter()
@@ -182,10 +182,10 @@ impl DiskManager {
             .map(move |(id, (pv, _))| (DeviceEntity { id, ctx: self }, pv))
     }
 
-    pub fn lvm_lvs_of_vg<'a>(
-        &'a self,
+    pub fn lvm_lvs_of_vg(
+        &self,
         entity: VgEntity,
-    ) -> impl Iterator<Item = (DeviceEntity<'a>, &'a LvmLv)> {
+    ) -> impl Iterator<Item = (DeviceEntity<'_>, &LvmLv)> {
         self.components
             .lvs
             .iter()
@@ -223,9 +223,7 @@ impl DiskManager {
 pub struct VolumeGroupShare(Vec<LvmVg>);
 
 impl VolumeGroupShare {
-    pub fn clear(&mut self) {
-        self.0.clear();
-    }
+    pub fn clear(&mut self) { self.0.clear(); }
 
     pub fn insert(&mut self, input: LvmVg) -> VgEntity {
         self.0.push(input);
@@ -236,7 +234,5 @@ impl VolumeGroupShare {
         self.0.iter().enumerate().map(|(id, entity)| (VgEntity(id as u32), entity))
     }
 
-    pub fn get(&self, index: VgEntity) -> &LvmVg {
-        &self.0[index.0 as usize]
-    }
+    pub fn get(&self, index: VgEntity) -> &LvmVg { &self.0[index.0 as usize] }
 }
