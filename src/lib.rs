@@ -167,14 +167,14 @@ impl DiskManager {
         })
     }
 
-    pub fn lvm_volume_groups<'a>(&'a self) -> impl Iterator<Item = (VgEntity, &'a LvmVg)> {
+    pub fn lvm_volume_groups(&self) -> impl Iterator<Item = (VgEntity, &LvmVg)> {
         self.components.vgs.iter()
     }
 
-    pub fn lvm_pvs_of_vg<'a>(
-        &'a self,
+    pub fn lvm_pvs_of_vg(
+        &self,
         entity: VgEntity,
-    ) -> impl Iterator<Item = (DeviceEntity<'a>, &'a LvmPv)> {
+    ) -> impl Iterator<Item = (DeviceEntity<'_>, &LvmPv)> {
         self.components
             .pvs
             .iter()
@@ -182,10 +182,10 @@ impl DiskManager {
             .map(move |(id, (pv, _))| (DeviceEntity { id, ctx: self }, pv))
     }
 
-    pub fn lvm_lvs_of_vg<'a>(
-        &'a self,
+    pub fn lvm_lvs_of_vg(
+        &self,
         entity: VgEntity,
-    ) -> impl Iterator<Item = (DeviceEntity<'a>, &'a LvmLv)> {
+    ) -> impl Iterator<Item = (DeviceEntity<'_>, &LvmLv)> {
         self.components
             .lvs
             .iter()
