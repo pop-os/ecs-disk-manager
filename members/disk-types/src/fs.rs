@@ -10,13 +10,14 @@ pub enum FileSystem {
     Ext3,
     Ext4,
     F2fs,
-    Fat16,
-    Fat32,
-    Ntfs,
-    Swap,
-    Xfs,
+    Iso9660,
     Luks,
     Lvm,
+    Ntfs,
+    Squashfs,
+    Swap,
+    Vfat,
+    Xfs,
     Zfs,
 }
 
@@ -50,18 +51,6 @@ impl FileSystem {
             FileSystem::Btrfs if size < BTRFS_MIN => {
                 Err(PartitionSizeError::TooSmall(size, BTRFS_MIN))
             }
-            FileSystem::Fat16 if size < FAT16_MIN => {
-                Err(PartitionSizeError::TooSmall(size, FAT16_MIN))
-            }
-            FileSystem::Fat16 if size > FAT16_MAX => {
-                Err(PartitionSizeError::TooLarge(size, FAT16_MAX))
-            }
-            FileSystem::Fat32 if size < FAT32_MIN => {
-                Err(PartitionSizeError::TooSmall(size, FAT32_MIN))
-            }
-            FileSystem::Fat32 if size > FAT32_MAX => {
-                Err(PartitionSizeError::TooLarge(size, FAT32_MAX))
-            }
             FileSystem::Ext4 if size > EXT4_MAX => {
                 Err(PartitionSizeError::TooLarge(size, EXT4_MAX))
             }
@@ -81,13 +70,14 @@ impl FromStr for FileSystem {
             "ext3" => FileSystem::Ext3,
             "ext4" => FileSystem::Ext4,
             "f2fs" => FileSystem::F2fs,
-            "fat16" => FileSystem::Fat16,
-            "fat32" | "vfat" => FileSystem::Fat32,
-            "swap" | "linux-swap(v1)" => FileSystem::Swap,
-            "ntfs" => FileSystem::Ntfs,
-            "xfs" => FileSystem::Xfs,
-            "lvm" | "lvm2_member" => FileSystem::Lvm,
+            "fat16" |"fat32" | "vfat" => FileSystem::Vfat,
+            "iso9660" => FileSystem::Iso9660,
             "luks" | "crypto_luks" => FileSystem::Luks,
+            "lvm" | "lvm2_member" => FileSystem::Lvm,
+            "ntfs" => FileSystem::Ntfs,
+            "squashfs" => FileSystem::Squashfs,
+            "swap" | "linux-swap(v1)" => FileSystem::Swap,
+            "xfs" => FileSystem::Xfs,
             "zfs" => FileSystem::Zfs,
             _ => return Err("invalid file system name"),
         };
@@ -104,13 +94,14 @@ impl From<FileSystem> for &'static str {
             FileSystem::Ext3 => "ext3",
             FileSystem::Ext4 => "ext4",
             FileSystem::F2fs => "f2fs",
-            FileSystem::Fat16 => "fat16",
-            FileSystem::Fat32 => "fat32",
             FileSystem::Ntfs => "ntfs",
             FileSystem::Swap => "swap",
             FileSystem::Xfs => "xfs",
             FileSystem::Lvm => "lvm",
             FileSystem::Luks => "luks",
+            FileSystem::Squashfs => "squashfs",
+            FileSystem::Iso9660 => "iso9660",
+            FileSystem::Vfat => "vfat",
             FileSystem::Zfs => "zfs",
         }
     }
