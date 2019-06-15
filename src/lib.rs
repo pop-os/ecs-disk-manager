@@ -21,7 +21,7 @@ use std::{
 };
 
 pub use self::{builder::*, entity::*};
-
+pub use disk_types;
 pub use slotmap::DefaultKey as Entity;
 
 #[derive(Debug, Copy, Clone, Eq, Hash, PartialEq)]
@@ -83,10 +83,10 @@ pub struct DiskComponents {
 
 #[derive(Debug, Default)]
 struct DiskOps {
-    pub create: Vec<(Entity, PartitionBuilder)>,
-    pub format: HashMap<Entity, FileSystem>,
+    pub create:  Vec<(Entity, PartitionBuilder)>,
+    pub format:  HashMap<Entity, FileSystem>,
     pub mklabel: HashMap<Entity, PartitionTable>,
-    pub remove: HashSet<Entity>,
+    pub remove:  HashSet<Entity>,
 }
 
 impl DiskOps {
@@ -223,9 +223,7 @@ impl DiskManager {
 pub struct VolumeGroupShare(Vec<LvmVg>);
 
 impl VolumeGroupShare {
-    pub fn clear(&mut self) {
-        self.0.clear();
-    }
+    pub fn clear(&mut self) { self.0.clear(); }
 
     pub fn insert(&mut self, input: LvmVg) -> VgEntity {
         self.0.push(input);
@@ -236,7 +234,5 @@ impl VolumeGroupShare {
         self.0.iter().enumerate().map(|(id, entity)| (VgEntity(id as u32), entity))
     }
 
-    pub fn get(&self, index: VgEntity) -> &LvmVg {
-        &self.0[index.0 as usize]
-    }
+    pub fn get(&self, index: VgEntity) -> &LvmVg { &self.0[index.0 as usize] }
 }
