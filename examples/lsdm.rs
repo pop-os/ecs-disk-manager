@@ -82,49 +82,49 @@ fn list_by_vg(manager: &DiskManager) {
     }
 }
 
-fn list_partition(entity: &DeviceEntity, partition: &Partition, level: u16, path: bool) {
-    let padding = "  ".repeat(level as usize);
+fn list_partition(entity: &DeviceEntity, partition: &Partition, level: usize, path: bool) {
+    let padding = level * 2;
     let device = entity.device();
 
     if path {
-        println!("{}Path:        {}", padding, device.path.display());
+        println!("{:padding$}Path:        {}", device.path.display(), padding = padding);
     }
-    println!("{}Sector Size: {}", padding, device.logical_sector_size);
-    println!("{}Offset:      {}", padding, partition.offset);
-    println!("{}Length:      {}", padding, device.sectors);
-    println!("{}Number:      {}", padding, partition.number);
+    println!("{:padding$}Sector Size: {}", device.logical_sector_size, padding = padding);
+    println!("{:padding$}Offset:      {}", partition.offset, padding = padding);
+    println!("{:padding$}Length:      {}", device.sectors, padding = padding);
+    println!("{:padding$}Number:      {}", partition.number, padding = padding);
 
     if let Some(fs) = partition.filesystem {
-        println!("{}FS:          {}", padding, <&'static str>::from(fs));
+        println!("{:padding$}FS:          {}", <&'static str>::from(fs), padding = padding);
     }
 
     if let Some(uuid) = &partition.uuid {
-        println!("{}UUID:        {}", padding, uuid);
+        println!("{:padding$}UUID:        {}", uuid, padding = padding);
     }
 
     if let Some(partuuid) = &partition.partuuid {
-        println!("{}PartUUID:    {}", padding, partuuid);
+        println!("{:padding$}PartUUID:    {}", partuuid, padding = padding);
     }
 
     if let Some(partlabel) = &partition.partlabel {
-        println!("{}PartLabel:   {}", padding, partlabel);
+        println!("{:padding$}PartLabel:   {}", partlabel, padding = padding);
     }
 
     if let Some((vg, pv)) = entity.pv() {
-        println!("{}PV:          {}", padding, pv.path.display());
+        println!("{:padding$}PV:          {}", pv.path.display(), padding = padding);
 
         if let Some(vg) = vg {
-            println!("{}VG:          {}", padding, vg.name);
+            println!("{:padding$}VG:          {}", vg.name, padding = padding);
         }
     }
 
     for child in entity.children() {
         let device = child.device();
-        println!("{}Child:       {}", padding, device.path.display());
+        println!("{:padding$}Child:       {}", device.path.display(), padding = padding);
     }
 
     for parent in entity.parents() {
         let parent = parent.device();
-        println!("{}Parent:      {}", padding, parent.path.display());
+        println!("{:padding$}Parent:      {}", parent.path.display(), padding = padding);
     }
 }
