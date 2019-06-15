@@ -24,7 +24,7 @@ impl FromStr for PartitionTable {
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         let table = match input {
-            "mbr" => PartitionTable::Mbr,
+            "dos" => PartitionTable::Mbr,
             "gpt" => PartitionTable::Guid,
             _ => return Err(()),
         };

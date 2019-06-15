@@ -11,7 +11,6 @@ pub struct Disk {
     pub serial: Box<str>,
     pub table:  Option<PartitionTable>,
 }
-
 #[derive(Debug, Clone)]
 pub struct Device {
     pub name:                 Box<str>,
