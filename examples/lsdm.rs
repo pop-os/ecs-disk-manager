@@ -1,5 +1,4 @@
-use disk_types::*;
-use ecs_disk_manager::*;
+use ecs_disk_manager::{disk_types::*, *};
 
 fn main() {
     let mut manager = DiskManager::default();
