@@ -8,13 +8,13 @@ pub struct DeviceEntity<'a> {
 
 impl<'a> DeviceEntity<'a> {
     // If the device is a loopback, this will kdisplay the backing file.
-    pub fn backing_file<'b>(&'b self) -> Option<&'a Path> {
+    pub fn backing_file(&self) -> Option<&Path> {
         self.ctx.components.loopbacks.get(self.id).map(AsRef::as_ref)
     }
 
     // Provides an iterator for listing children of a device, for devices that support having
     // multiple children.
-    pub fn children<'b>(&'b self) -> impl Iterator<Item = DeviceEntity<'b>> {
+    pub fn children(&self) -> impl Iterator<Item = DeviceEntity<'_>> {
         self.ctx
             .components
             .children
@@ -25,18 +25,18 @@ impl<'a> DeviceEntity<'a> {
     }
 
     // Access information about this device.
-    pub fn device<'b>(&'b self) -> &'b Device { self.ctx.device(self.id) }
+    pub fn device(&self) -> &Device { self.ctx.device(self.id) }
 
     // If the device is a device map, this will return its name.
-    pub fn device_map_name<'b>(&'b self) -> Option<&'b str> {
+    pub fn device_map_name(&self) -> Option<&str> {
         self.ctx.components.device_maps.get(self.id).map(AsRef::as_ref)
     }
 
     // If the device is a disk, information about that disk can be retrieved here.
-    pub fn disk<'b>(&'b self) -> Option<&'b Disk> { self.ctx.components.disks.get(self.id) }
+    pub fn disk(&self) -> Option<&Disk> { self.ctx.components.disks.get(self.id) }
 
     // For LV devices which are associated with a VG.
-    pub fn lv<'b>(&'b self) -> Option<(&'b LvmVg, &'b LvmLv)> {
+    pub fn lv(&self) -> Option<(&LvmVg, &LvmLv)> {
         self.ctx
             .components
             .lvs
@@ -53,10 +53,10 @@ impl<'a> DeviceEntity<'a> {
     }
 
     // If the device is a LUKS partition, information about the LUKS device is here.
-    pub fn luks<'b>(&'b self) -> Option<&'b Luks> { self.ctx.components.luks.get(self.id) }
+    pub fn luks(&self) -> Option<&Luks> { self.ctx.components.luks.get(self.id) }
 
     // Return the parent of this device, if this device has one.
-    pub fn parents<'b>(&'b self) -> impl Iterator<Item = DeviceEntity<'b>> {
+    pub fn parents(&self) -> impl Iterator<Item = DeviceEntity<'_>> {
         self.ctx
             .components
             .parents
