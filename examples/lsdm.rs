@@ -11,8 +11,6 @@ fn main() {
     for (entity, device) in manager.devices() {
         if let Some(disk) = entity.disk() {
             list_disk(&entity, device, disk);
-        } else if let Some(dm_name) = entity.device_map_name() {
-            list_device_map(&entity, device, dm_name, 0);
         }
     }
 
@@ -116,13 +114,16 @@ fn list_partition(entity: &DeviceEntity, partition: &Partition, level: usize, pa
         }
     }
 
-    for child in entity.children() {
-        let device = child.device();
-        println!("{1:0$}Child:       {2}", padding, " ", device.path.display());
-    }
-
     for parent in entity.parents() {
         let parent = parent.device();
         println!("{1:0$}Parent:      {2}", padding, " ", parent.path.display());
+    }
+
+    for child in entity.children() {
+        let device = child.device();
+        println!("{1:0$}Child:       {2}", padding, " ", device.path.display());
+        if let Some(dm) = child.device_map_name() {
+            list_device_map(&child, device, dm, level + 1);
+        }
     }
 }
