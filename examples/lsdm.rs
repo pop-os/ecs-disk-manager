@@ -8,20 +8,19 @@ fn main() {
         return;
     }
 
-    for entity in manager.devices() {
+    for (entity, device) in manager.devices() {
         if let Some(disk) = entity.disk() {
-            list_disk(&manager, &entity, disk);
+            list_disk(&entity, device, disk);
         } else if let Some(dm_name) = entity.device_map_name() {
-            list_device_map(&manager, &entity, dm_name, 0);
+            list_device_map(&entity, device, dm_name, 0);
         }
     }
 
     list_by_vg(&manager);
 }
 
-fn list_device_map(manager: &DiskManager, entity: &DeviceEntity, dm_name: &str, level: usize) {
+fn list_device_map(entity: &DeviceEntity, device: &Device, dm_name: &str, level: usize) {
     let padding = level * 2;
-    let device = entity.device();
     println!("{1:0$}Device Map: {2}", padding, " ", dm_name);
     println!("{1:0$}  Path:        {2}", padding, " ", device.path.display());
     println!("{1:0$}  Sector Size: {2}", padding, " ", device.logical_sector_size);
@@ -44,9 +43,7 @@ fn list_device_map(manager: &DiskManager, entity: &DeviceEntity, dm_name: &str, 
     }
 }
 
-fn list_disk(manager: &DiskManager, entity: &DeviceEntity, disk: &Disk) {
-    let disk_device = entity.device();
-
+fn list_disk(entity: &DeviceEntity, disk_device: &Device, disk: &Disk) {
     println!("Disk: {}", disk_device.name);
     println!("  Path:        {}", disk_device.path.display());
     println!("  Sector Size: {}", disk_device.logical_sector_size);

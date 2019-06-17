@@ -133,8 +133,8 @@ impl DiskManager {
     }
 
     /// All entities are device entities in the world.
-    pub fn devices<'a>(&'a self) -> impl Iterator<Item = DeviceEntity<'a>> + 'a {
-        self.entities.keys().map(move |id| DeviceEntity { id, ctx: self })
+    pub fn devices<'a>(&'a self) -> impl Iterator<Item = (DeviceEntity<'a>, &'a Device)> + 'a {
+        self.components.devices.iter().map(move |(id, dev)| (DeviceEntity { id, ctx: self }, dev))
     }
 
     /// Some device entities are LUKS crypto devices.
