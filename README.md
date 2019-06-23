@@ -1,6 +1,6 @@
 # ECS Disk Manager
 
-This is an experiment to create a complete disk management library in Rust around an ECS architecture, exposing a simple API for programs to interact with. In addition to serving as a library, it will also be provided as a daemon with RPC capabilities to interact with software written in other languages, or that would prefer not to link a disk managemer into their application.
+This is an experiment to create a complete disk management library in Rust around an ECS architecture, exposing a simple API for programs to interact with. In addition to serving as a library, it will also be provided as a daemon with RPC capabilities to interact with software written in other languages, or that would prefer not to link a disk manager into their application.
 
 ## Features
 
