@@ -1,31 +1,45 @@
+#[macro_use]
+extern crate err_derive;
+#[macro_use]
+extern crate cascade;
+
 use std::{io, path::Path};
 
-pub fn wipe_signatures(device: &Path) -> io::Result<()> { unimplemented!() }
-
-pub mod table {
-    use disk_types::PartitionTable;
-    use std::{io, path::Path};
-
-    pub fn create(device: &Path, table: PartitionTable) -> io::Result<()> { unimplemented!() }
-
-    pub fn delete(device: &Path, table: PartitionTable, at: u64) -> io::Result<()> {
-        unimplemented!()
-    }
-
-    pub fn move_(device: &Path, table: PartitionTable, at: u64, offset: i64) -> io::Result<()> {
-        unimplemented!()
-    }
-
-    pub fn resize(device: &Path, table: PartitionTable, at: u64, to: u64) -> io::Result<()> {
-        unimplemented!()
-    }
-}
+pub mod table;
 
 pub mod partition {
     use disk_types::FileSystem;
-    use std::{io, path::Path};
+    use std::{io, path::Path, process::Command};
 
-    pub fn create(device: &Path, fs: FileSystem) -> io::Result<()> { unimplemented!() }
+    pub fn create(device: &Path, fs: FileSystem) -> io::Result<()> {
+        let (cmd, args): (&'static str, &'static [&'static str]) = match fs {
+            FileSystem::Btrfs => ("mkfs.btrfs", &["-f"]),
+            FileSystem::Exfat => ("mkfs.exfat", &[]),
+            FileSystem::Ext2 => ("mkfs.ext2", &["-F", "-q"]),
+            FileSystem::Ext3 => ("mkfs.ext3", &["-F", "-q"]),
+            FileSystem::Ext4 => ("mkfs.ext4", &["-F", "-q", "-E", "lazy_itable_init"]),
+            FileSystem::F2fs => ("mkfs.f2fs", &["-q"]),
+            FileSystem::Vfat => ("mkfs.fat", &["-F", "32"]),
+            FileSystem::Ntfs => ("mkfs.ntfs", &["-FQ", "-q"]),
+            FileSystem::Swap => {
+                if swap_exists(device) {
+                    return Ok(());
+                }
+
+                ("mkswap", &["-f"])
+            },
+            FileSystem::Xfs => ("mkfs.xfs", &["-f"]),
+            _ => unimplemented!("creating unsupported file system"),
+        };
+
+        Command::new(cmd).args(args).arg(device).status()?;
+
+        Ok(())
+    }
 
     pub fn resize(device: &Path, fs: FileSystem) -> io::Result<()> { unimplemented!() }
+
+    fn swap_exists(path: &Path) -> bool {
+        Command::new("swaplabel").arg(path).status().ok().map_or(false, |stat| stat.success())
+    }
 }

@@ -7,3 +7,10 @@ license = "Apache-2.0/MIT"
 
 [dependencies]
 disk-types = { path = "../disk-types" }
+gptman = { git = "https://github.com/mmstick/gptman", branch = "derive-error" }
+rand = "0.6.5"
+ioctls = "0.5.1"
+err-derive = "0.1.5"
+uuid = "0.7.4"
+bincode = "1.1.4"
+cascade = "0.1.3"
