@@ -2,6 +2,8 @@
 extern crate err_derive;
 #[macro_use]
 extern crate cascade;
+#[macro_use]
+extern crate shrinkwraprs;
 
 use std::{io, path::Path};
 
@@ -32,7 +34,12 @@ pub mod partition {
             _ => unimplemented!("creating unsupported file system"),
         };
 
-        Command::new(cmd).args(args).arg(device).status()?;
+        let mut cmd = Command::new(cmd);
+        cmd.args(args).arg(device);
+
+        eprintln!("creating file system: {:?}", cmd);
+
+        cmd.status()?;
 
         Ok(())
     }

@@ -2,6 +2,7 @@
 extern crate err_derive;
 
 mod builder;
+mod common;
 mod entity;
 mod systems;
 
@@ -22,6 +23,7 @@ use std::{
 
 pub use self::{builder::*, entity::*};
 pub use disk_types;
+pub use disk_ops::table::PartitionError;
 pub use slotmap::DefaultKey as Entity;
 
 #[derive(Debug, Copy, Clone, Eq, Hash, PartialEq)]
@@ -31,14 +33,16 @@ pub struct VgEntity(pub(crate) u32);
 pub enum DiskError {
     #[error(display = "disk operations cancelled by caller")]
     Cancelled,
-    #[error(display = "block device probing failed: {}", _0)]
-    BlockProber(BlockProbeError),
-    #[error(display = "device has unknown file system: {}", _0)]
+    #[error(display = "block device probing failed")]
+    BlockProber(#[error(cause)] BlockProbeError),
+    #[error(display = "device has unknown file system ({})", _0)]
     UnknownFS(Box<str>),
-    #[error(display = "lvm device probing failed: {}", _0)]
-    LvmProber(LvmProbeError),
-    #[error(display = "failed to move partition ({:?}): {}", _0, _1)]
-    Remove(Box<Path>, io::Error),
+    #[error(display = "lvm device probing failed")]
+    LvmProber(#[error(cause)] LvmProbeError),
+    #[error(display = "failed to read GUID table from {:?}", _0)]
+    NotGuid(Box<Path>, #[error(cause)] PartitionError),
+    #[error(display = "failed to move partition ({:?})", _0)]
+    Remove(Box<Path>, #[error(cause)] io::Error),
 }
 
 #[derive(Debug, Default)]
@@ -86,7 +90,7 @@ struct DiskOps {
     pub create:  Vec<(Entity, PartitionBuilder)>,
     pub format:  HashMap<Entity, FileSystem>,
     pub mklabel: HashMap<Entity, PartitionTable>,
-    pub remove:  HashSet<Entity>,
+    pub remove:  HashMap<Entity, Vec<Entity>>,
 }
 
 impl DiskOps {
@@ -210,11 +214,6 @@ impl DiskManager {
 
     pub fn format(&mut self, device: Entity, filesystem: FileSystem) -> Result<(), DiskError> {
         self.ops.format.insert(device, filesystem);
-        Ok(())
-    }
-
-    pub fn remove(&mut self, device: Entity) -> Result<(), DiskError> {
-        self.ops.remove.insert(device);
         Ok(())
     }
 }

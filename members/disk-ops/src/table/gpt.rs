@@ -1,11 +1,11 @@
 use disk_types::PartitionTable;
-use std::{fs::{File, OpenOptions}, io::{self, Seek, SeekFrom}};
+use std::{fs::{self, File, OpenOptions}, io::{self, Seek, SeekFrom}};
 use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
 use gptman::{GPT, GPTPartitionEntry};
 use rand::Rng;
-use super::{Partitioner, PartitionError, PartitionResult, TableError};
 
+use super::{Partitioner, PartitionError, PartitionResult, TableError};
 
 pub fn convert_str_to_array(uuid: &str) -> Result<[u8; 16], ParseIntError> {
     let mut arr = [0; 16];
@@ -41,6 +41,37 @@ pub struct Gpt {
     table: GPT
 }
 
+impl Gpt {
+    pub fn create(device: &Path, sector_size: u64) -> PartitionResult<Self> {
+        let mut device = OpenOptions::new()
+            .write(true)
+            .open(device)
+            .map_err(PartitionError::DeviceOpen)?;
+
+        let table = GPT::new_from(&mut device, sector_size, generate_random_uuid())
+            .map_err(TableError::from)
+            .map_err(PartitionError::TableRead)?;
+
+        write_protective_mbr_into(&mut device, sector_size).unwrap();
+
+        Ok(Gpt { device, table })
+    }
+
+    pub fn open(device: &Path) -> PartitionResult<Self> {
+        let mut device = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(device)
+            .map_err(PartitionError::DeviceOpen)?;
+
+        let table = GPT::find_from(&mut device)
+            .map_err(TableError::from)
+            .map_err(PartitionError::TableRead)?;
+
+        Ok(Gpt { device, table })
+    }
+}
+
 impl Partitioner for Gpt {
     fn add(&mut self, start: u64, end: u64, name: Option<&str>) -> PartitionResult<u32> {
         let partition = GPTPartitionEntry {
@@ -62,37 +93,7 @@ impl Partitioner for Gpt {
         Ok(id)
     }
 
-    fn create(device: &Path, sector_size: u64) -> PartitionResult<Self> {
-        let mut device = OpenOptions::new()
-            .write(true)
-            .open(device)
-            .map_err(PartitionError::DeviceOpen)?;
-
-        let table = GPT::new_from(&mut device, sector_size, generate_random_uuid())
-            .map_err(TableError::from)
-            .map_err(PartitionError::TableRead)?;
-
-        write_protective_mbr_into(&mut device, sector_size).unwrap();
-
-        Ok(Gpt { device, table })
-    }
-
-    fn open(device: &Path) -> PartitionResult<Self> {
-        let mut device = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(device)
-            .map_err(PartitionError::DeviceOpen)?;
-
-        let table = GPT::find_from(&mut device)
-            .map_err(TableError::from)
-            .map_err(PartitionError::TableRead)?;
-
-        Ok(Gpt { device, table })
-    }
-
-
-    fn remove(&mut self, sector: u64) -> PartitionResult<&mut Self> {
+    fn remove(&mut self, sector: u64) -> PartitionResult<()> {
         fn between(partition: &GPTPartitionEntry, sector: u64) -> bool {
             sector >= partition.starting_lba && sector <= partition.ending_lba
         }
@@ -106,39 +107,29 @@ impl Partitioner for Gpt {
             .map_err(TableError::from)
             .map_err(PartitionError::PartitionRemove)?;
 
-        Ok(self)
+        Ok(())
     }
 
     fn last_sector(&self) -> u64 {
         self.table.header.last_usable_lba
     }
 
-    fn write(&mut self) -> PartitionResult<&mut Self> {
+    fn write(&mut self) -> PartitionResult<()> {
         eprintln!("writing table");
         self.table.write_into(&mut self.device)
             .map_err(TableError::from)
             .map_err(PartitionError::DeviceWrite)?;
 
         eprintln!("reloading table");
-        reload_partition_table(&mut self.device)
+        gptman::linux::reread_partition_table(&mut self.device)
             .map_err(PartitionError::TableReload)?;
 
-        Ok(self)
+        Ok(())
     }
 }
 
 fn generate_random_uuid() -> [u8; 16] {
     rand::thread_rng().gen()
-}
-
-fn reload_partition_table(file: &mut File) -> io::Result<()> {
-    use std::os::unix::io::AsRawFd;
-
-    if unsafe { ioctls::blkrrpart(file.as_raw_fd()) } == -1 {
-        Err(io::Error::last_os_error())
-    } else {
-        Ok(())
-    }
 }
 
 pub fn wipe(device: &Path) -> io::Result<()> {

@@ -7,24 +7,18 @@ use std::{fs::{File, OpenOptions}, io::{self, Seek, SeekFrom}, path::Path};
 use gptman::{GPT, GPTPartitionEntry};
 use rand::Rng;
 
-pub trait Partitioner: Sized {
+pub trait Partitioner {
     /// Adds a new partition to the in-memory partition table.
     fn add(&mut self, start: u64, end: u64, name: Option<&str>) -> PartitionResult<u32>;
 
-    /// Creates a new in-memory partition table for the device with the given sector size.
-    fn create(device: &Path, sector_size: u64) -> PartitionResult<Self>;
-
-    /// Reads an existing GUID partition table.
-    fn open(device: &Path) -> PartitionResult<Self>;
-
     /// Removes the partition that resides at the given sector.
-    fn remove(&mut self, sector: u64) -> PartitionResult<&mut Self>;
+    fn remove(&mut self, sector: u64) -> PartitionResult<()>;
 
     /// The last addressable sector in the table.
     fn last_sector(&self) -> u64;
 
     /// Writes the in-memory partition table to the device.
-    fn write(&mut self) -> PartitionResult<&mut Self>;
+    fn write(&mut self) -> PartitionResult<()>;
 }
 
 #[derive(Debug, Error)]
@@ -44,7 +38,7 @@ pub enum PartitionError {
     #[error(display = "partition table could not be read")]
     TableRead(#[error(cause)] TableError),
     #[error(display = "partition table could not be reloaded")]
-    TableReload(#[error(cause)] io::Error),
+    TableReload(#[error(cause)] gptman::linux::BlockError),
 }
 
 #[derive(Debug, Error)]

@@ -15,7 +15,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let efi = table.add(1024, 1024000, "EFI".into())?;
     let root = table.add(1024000, root_size / 512, "Root".into())?;
-    let home = table.add(root_size / 512, table.last_sector(), "Home".into())?;
 
     table.write()?;
 
@@ -29,14 +28,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         FileSystem::Btrfs
     )?;
 
+    table = disk_ops::table::Gpt::open(path)?;
+    table.remove(1024001)?;
+
+    let home = table.add(root_size / 512, table.last_sector(), "Home".into())?;
+
+    table.write()?;
+
     disk_ops::partition::create(
         Path::new(&format!("/dev/sdb{}", home)),
         FileSystem::Btrfs
     )?;
-
-    disk_ops::table::Gpt::open(path)?
-        .remove(1024001)?
-        .write()?;
 
     Ok(())
 }
