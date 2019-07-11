@@ -23,5 +23,6 @@ disk-types = { path = "members/disk-types" }
 lvmdbus1 = { path = "members/lvmdbus1" }
 slotmap = "0.3.0"
 secstr = "0.3.2"
-rayon = "1.0.3"
+rayon = "1.1.0"
 err-derive = "0.1.5"
+bitflags = "1.1.0"

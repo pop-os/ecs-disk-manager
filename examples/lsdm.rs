@@ -116,7 +116,7 @@ fn list_partition(manager: &DiskManager, entity: Entity, partition: &Partition, 
         }
     }
 
-    for &parent in manager.parents(entity).into_iter().flatten() {
+    for parent in manager.parents(entity) {
         let parent = manager.device(parent);
         println!("{1:0$}Parent:      {2}", padding, " ", parent.path.display());
     }

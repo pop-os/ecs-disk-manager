@@ -3,7 +3,7 @@ pub use self::linux::*;
 
 #[cfg(target_os = "linux")]
 mod linux {
-    use crate::*;
+    use crate::{*, Error as DiskError};
     use disk_types::*;
     use std::fs::read_link;
 
@@ -13,7 +13,7 @@ mod linux {
             let probed = res.map_err(DiskError::BlockProber)?;
             let info = probed.probe().map_err(DiskError::BlockProber)?;
 
-            let whole_entity = world.entities.insert(());
+            let whole_entity = world.entities.insert(Flags::empty());
 
             world.components.devices.insert(
                 whole_entity,
@@ -55,10 +55,8 @@ mod linux {
 
             let mut children = Vec::new();
             for partition in info.partitions {
-                let part_entity = world.entities.insert(());
+                let part_entity = world.entities.insert(Flags::empty());
                 children.push(part_entity);
-
-                world.components.parents.insert(part_entity, vec![whole_entity]);
 
                 world.components.devices.insert(
                     part_entity,
@@ -88,7 +86,7 @@ mod linux {
             world.components.children.insert(whole_entity, children);
         }
 
-        associate_parents_and_their_children(world);
+        associate_children(world);
 
         if let Err(why) = associate_lvm_devices(world) {
             eprintln!("failed to associate lvm devices: {}", why);
@@ -98,8 +96,8 @@ mod linux {
         Ok(())
     }
 
-    fn associate_parents_and_their_children(world: &mut DiskManager) {
-        let &mut DiskComponents { ref devices, ref mut children, ref mut parents, .. } =
+    fn associate_children(world: &mut DiskManager) {
+        let &mut DiskComponents { ref devices, ref mut children, .. } =
             &mut world.components;
 
         for (entity, device) in devices {
@@ -111,11 +109,6 @@ mod linux {
                             device.path.display(),
                             other_device.path.display()
                         );
-
-                        match parents.get_mut(entity) {
-                            Some(associations) => associations.push(other_entity),
-                            None => drop(parents.insert(entity, vec![other_entity])),
-                        }
 
                         match children.get_mut(other_entity) {
                             Some(associations) => associations.push(entity),

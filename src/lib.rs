@@ -1,4 +1,6 @@
 #[macro_use]
+extern crate bitflags;
+#[macro_use]
 extern crate err_derive;
 
 mod builder;
@@ -29,9 +31,7 @@ pub use slotmap::DefaultKey as Entity;
 pub struct VgEntity(pub(crate) u32);
 
 #[derive(Debug, Error)]
-pub enum DiskError {
-    #[error(display = "disk operations cancelled by caller")]
-    Cancelled,
+pub enum Error {
     #[error(display = "block device probing failed")]
     BlockProber(#[error(cause)] BlockProbeError),
     #[error(display = "device has unknown file system ({})", _0)]
@@ -40,13 +40,13 @@ pub enum DiskError {
     LvmProber(#[error(cause)] LvmProbeError),
     #[error(display = "failed to read GUID table from {:?}", _0)]
     NotGuid(Box<Path>, #[error(cause)] PartitionError),
-    #[error(display = "failed to move partition ({:?})", _0)]
-    Remove(Box<Path>, #[error(cause)] io::Error),
+    #[error(display = "system execution failed")]
+    SystemRun(#[error(cause)] systems::Error),
 }
 
 #[derive(Debug, Default)]
 pub struct DiskManager {
-    pub entities: HopSlotMap<Entity, ()>,
+    pub entities: HopSlotMap<Entity, Flags>,
     // Components representing current data on devices.
     pub components: DiskComponents,
     // Operations that will be carried out when systems are invoked
@@ -70,7 +70,7 @@ pub struct DiskComponents {
     // If a device is a LUKS device, its information is here.
     pub luks: SparseSecondaryMap<Entity, Luks>,
     // If the device has a parent, it will be associated here.
-    pub parents: SparseSecondaryMap<Entity, Vec<Entity>>,
+    // pub parents: SparseSecondaryMap<Entity, Vec<Entity>>,
     // Devices with parent(s) will associate their parent device(s) here.
     pub partitions: SparseSecondaryMap<Entity, Partition>,
     // Devices which map to a LVM VG are associated here.
@@ -109,16 +109,16 @@ impl DiskManager {
     }
 
     /// Reloads all disk information from the system.
-    pub fn scan(&mut self) -> Result<(), DiskError> {
+    pub fn scan(&mut self) -> Result<(), Error> {
         self.clear();
         systems::scan(self)
     }
 
     /// Apply all queued disk operations on the system.
-    pub fn apply(&mut self, cancel: &Arc<AtomicBool>) -> Result<(), DiskError> {
-        let result = systems::apply(self, cancel);
+    pub fn apply(&mut self, cancel: &Arc<AtomicBool>) -> Result<(), Error> {
+        let result = systems::run(self, cancel);
         self.ops.clear();
-        result
+        result.map_err(Error::SystemRun)
     }
 
     // If the device is a loopback, this will kdisplay the backing file.
@@ -226,12 +226,12 @@ impl DiskManager {
             .map(move |(id, (pv, _))| (id, pv))
     }
 
-    /// Return the parent of this device, if this device has one.
-    pub fn parents(&self, entity: Entity) -> Option<&[Entity]> {
-        self.components
-            .parents
-            .get(entity)
-            .map(AsRef::as_ref)
+    /// Return the parent of this device.
+    pub fn parents<'b>(&'b self, entity: Entity) -> impl Iterator<Item = Entity> +'b {
+        self.components.children
+            .iter()
+            .filter(move |(pentity, pchildren)| pchildren.contains(&entity))
+            .map(|(pentity, _)| pentity)
     }
 
     pub fn partition<'b>(&'b self, entity: Entity) -> Option<&'b Partition> {
@@ -257,14 +257,32 @@ impl DiskManager {
         })
     }
 
-    pub fn add(&mut self, device: Entity, info: PartitionBuilder) -> Result<(), DiskError> {
+    pub fn add(&mut self, device: Entity, info: PartitionBuilder) -> Result<(), Error> {
         self.ops.create.push((device, info));
         Ok(())
     }
 
-    pub fn format(&mut self, device: Entity, filesystem: FileSystem) -> Result<(), DiskError> {
+    pub fn format(&mut self, device: Entity, filesystem: FileSystem) -> Result<(), Error> {
         self.ops.format.insert(device, filesystem);
         Ok(())
+    }
+
+    /// Marks the entity for removal, along with all of its children, and their children.
+    pub fn remove(&mut self, entity: Entity) {
+        self.entities[entity] |= Flags::REMOVE;
+
+        fn recurse(
+            entities: &mut HopSlotMap<Entity, Flags>,
+            storage: &SparseSecondaryMap<Entity, Vec<Entity>>,
+            child: Entity
+        ) {
+            for &child in storage.get(child).into_iter().flatten() {
+                entities[child] |= Flags::REMOVE;
+                recurse(entities, storage, child);
+            }
+        }
+
+        recurse(&mut self.entities, &self.components.children, entity);
     }
 }
 
@@ -284,4 +302,21 @@ impl VolumeGroupShare {
     }
 
     pub fn get(&self, index: VgEntity) -> &LvmVg { &self.0[index.0 as usize] }
+}
+
+bitflags! {
+    pub struct Flags: u8 {
+        /// Adds a partition.
+        const ADD    = 1 << 0;
+        /// Removes a partition or table.
+        const REMOVE = 1 << 1;
+        /// Resizes a partition.
+        const RESIZE = 1 << 3;
+        /// Formats a partition.
+        const FORMAT = 1 << 5;
+        /// Creates a new table on device.
+        const TABLE  = 1 << 6;
+        /// Sets a new label on device.
+        const LABEL  = 1 << 7;
+    }
 }
