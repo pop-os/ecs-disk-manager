@@ -74,6 +74,9 @@ impl DiskManager {
         // Associate the partition entity with its parent.
         self.components.children[parent].push(entity);
 
+        // Remind the manager that the creation system must be run.
+        self.flags |= ManagerFlags::CREATE;
+
         Ok(())
     }
 

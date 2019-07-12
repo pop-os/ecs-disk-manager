@@ -6,7 +6,7 @@ mod scan;
 
 pub use self::scan::scan;
 
-use crate::DiskManager;
+use crate::{DiskManager, ManagerFlags};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -53,16 +53,29 @@ macro_rules! cancellation_check {
 }
 
 pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Error> {
-    remove::run(world, cancel)?;
+    if world.flags.contains(ManagerFlags::REMOVE) {
+        remove::run(world, cancel)?;
+    }
 
-    // cancellation_check!(cancel);
-    // resize::run(world, cancel)?;
+    if world.flags.contains(ManagerFlags::RESIZE) {
+        // cancellation_check!(cancel);
+        // resize::run(world, cancel)?;
+    }
 
-    cancellation_check!(cancel);
-    create::run(world, cancel)?;
+    if world.flags.contains(ManagerFlags::CREATE) {
+        cancellation_check!(cancel);
+        create::run(world, cancel)?;
+    }
 
-    cancellation_check!(cancel);
-    format::run(world, cancel)?;
+    if world.flags.contains(ManagerFlags::FORMAT) {
+        cancellation_check!(cancel);
+        format::run(world, cancel)?;
+    }
+
+    if world.flags.contains(ManagerFlags::LABEL) {
+        // cancellation_check!(cancel);
+        // label::run(world, cancel)?;
+    }
 
     Ok(())
 }

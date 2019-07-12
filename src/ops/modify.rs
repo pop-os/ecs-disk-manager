@@ -6,6 +6,7 @@ impl DiskManager {
     pub fn label<S: Into<Box<str>>>(&mut self, entity: Entity, label: S) {
         self.components.partitions[entity].partlabel = Some(label.into());
         self.entities[entity] |= Flags::LABEL;
+        self.flags |= ManagerFlags::LABEL;
     }
 
     /// Marks the entity for removal, along with all of its children, and their children.
@@ -24,5 +25,6 @@ impl DiskManager {
         }
 
         recurse(&mut self.entities, &self.components.children, entity);
+        self.flags |= ManagerFlags::REMOVE;
     }
 }

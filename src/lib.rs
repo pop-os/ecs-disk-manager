@@ -33,6 +33,43 @@ pub use slotmap::DefaultKey as Entity;
 #[derive(Debug, Copy, Clone, Eq, Hash, PartialEq)]
 pub struct VgEntity(pub(crate) u32);
 
+bitflags! {
+    pub struct Flags: u8 {
+        /// Create a partition or table.
+        const CREATE = 1 << 0;
+        /// Removes a partition or table.
+        const REMOVE = 1 << 1;
+        /// Resizes a partition.
+        const RESIZE = 1 << 2;
+        /// Formats a partition.
+        const FORMAT = 1 << 3;
+        /// Change the label of the device.
+        const LABEL  = 1 << 4;
+    }
+}
+
+impl Default for Flags {
+    fn default() -> Self {
+        Flags::empty()
+    }
+}
+
+bitflags! {
+    pub struct ManagerFlags: u8 {
+        const CREATE = 1 << 0;
+        const FORMAT = 1 << 1;
+        const LABEL = 1 << 2;
+        const REMOVE = 1 << 3;
+        const RESIZE = 1 << 4;
+    }
+}
+
+impl Default for ManagerFlags {
+    fn default() -> Self {
+        ManagerFlags::empty()
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum Error {
     #[error(display = "block device probing failed")]
@@ -52,8 +89,10 @@ pub enum Error {
 #[derive(Debug, Default)]
 pub struct DiskManager {
     pub entities: HopSlotMap<Entity, Flags>,
-    // Components representing current data on devices.
+    /// Components representing current data on devices.
     pub components: DiskComponents,
+    /// Flags which control the behavior of the manager.
+    flags: ManagerFlags,
 }
 
 #[derive(Debug, Default)]
@@ -93,6 +132,24 @@ impl DiskManager {
         self.entities.clear();
     }
 
+    /// Unsets any operations that have been queued.
+    pub fn unset(&mut self) {
+        self.flags = Default::default();
+        let entities = &mut self.entities;
+        let mut entities_to_remove: Vec<Entity> = Vec::new();
+
+        for (entity, flags) in entities.iter_mut() {
+            if flags.contains(Flags::CREATE) {
+                entities_to_remove.push(entity);
+            }
+            *flags = Default::default();
+        }
+
+        entities_to_remove.into_iter().for_each(|entity| {
+            entities.remove(entity);
+        });
+    }
+
     /// Reloads all disk information from the system.
     pub fn scan(&mut self) -> Result<(), Error> {
         self.clear();
@@ -102,6 +159,7 @@ impl DiskManager {
     /// Apply all queued disk operations on the system.
     pub fn apply(&mut self, cancel: &Arc<AtomicBool>) -> Result<(), Error> {
         let result = systems::run(self, cancel);
+        self.unset();
         result.map_err(Error::SystemRun)
     }
 }
@@ -125,20 +183,5 @@ impl VolumeGroupShare {
 
     pub fn get(&self, index: VgEntity) -> &LvmVg {
         &self.0[index.0 as usize]
-    }
-}
-
-bitflags! {
-    pub struct Flags: u8 {
-        /// Create a partition or table.
-        const CREATE = 1 << 0;
-        /// Removes a partition or table.
-        const REMOVE = 1 << 1;
-        /// Resizes a partition.
-        const RESIZE = 1 << 2;
-        /// Formats a partition.
-        const FORMAT = 1 << 3;
-        /// Change the label of the device.
-        const LABEL  = 1 << 4;
     }
 }
