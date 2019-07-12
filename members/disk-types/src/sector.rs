@@ -1,4 +1,34 @@
+use crate::DeviceExt;
 use std::str::FromStr;
+
+/// Trait for getting and sectors from a device.
+pub trait SectorExt: DeviceExt {
+    /// Calculates the requested sector from a given `Sector` variant.
+    fn get_sector(&self, sector: Sector) -> u64 {
+        const MIB2: u64 = 2 * 1024 * 1024;
+
+        let end = || self.sectors() - (MIB2 / self.logical_sector_size());
+        let megabyte = |size| (size * 1_000_000) / self.logical_sector_size();
+
+        match sector {
+            Sector::Start => MIB2 / self.logical_sector_size(),
+            Sector::End => end(),
+            Sector::Megabyte(size) => megabyte(size),
+            Sector::MegabyteFromEnd(size) => end() - megabyte(size),
+            Sector::Unit(size) => size,
+            Sector::UnitFromEnd(size) => end() - size,
+            Sector::Percent(value) => {
+                if value == ::std::u16::MAX {
+                    self.sectors()
+                } else {
+                    ((self.sectors() * self.logical_sector_size()) / ::std::u16::MAX as u64)
+                        * value as u64
+                        / self.logical_sector_size()
+                }
+            }
+        }
+    }
+}
 
 /// Used with the `Disk::get_sector` method for converting a more human-readable unit
 /// into the corresponding sector for the given disk.

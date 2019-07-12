@@ -1,5 +1,9 @@
 use crate::*;
-use disk_ops::table::{Gpt, PartitionError, Partitioner, wipe};
+use disk_ops::table::{wipe, Gpt, PartitionError, Partitioner};
+
+// TODO:
+// - Unmount any entities that are mounted.
+// - Deactivate any LUKS / LVM volumes.
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -28,13 +32,10 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
         ref mut vgs,
     } = &mut world.components;
 
-    // TODO: Unmount any entities that are mounted.
-    // TODO: Deactivate any LUKS / LVM volumes.
-    //
     fn free_children(
         entities: &mut HopSlotMap<Entity, Flags>,
         storage: &mut SparseSecondaryMap<Entity, Vec<Entity>>,
-        parent: Entity
+        parent: Entity,
     ) {
         let mut freed = Vec::new();
         if let Some(mut children) = storage.remove(parent) {
@@ -59,7 +60,8 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
         if entities[disk_entity].contains(Flags::REMOVE) {
             devices_to_wipe.push(disk_entity);
         } else if let Some(children) = children.get(disk_entity) {
-            let free = children.into_iter()
+            let free = children
+                .into_iter()
                 .cloned()
                 .filter(|&entity| entities[entity].contains(Flags::REMOVE))
                 .collect::<Vec<Entity>>();
@@ -92,8 +94,7 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
         // Fetch a generic partitioner depending on the table kind.
         let partitioner: &mut dyn Partitioner = match table {
             PartitionTable::Guid => {
-                gpt = Gpt::open(path)
-                    .map_err(|why| Error::TableRead(table, path.into(), why))?;
+                gpt = Gpt::open(path).map_err(|why| Error::TableRead(table, path.into(), why))?;
                 &mut gpt
             }
             PartitionTable::Mbr => {
@@ -103,11 +104,10 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
         };
 
         for &child in &children_to_free {
-            partitioner.remove(partitions[child].offset + 1)
-                .map_err(|why| {
-                    let device = &devices[child];
-                    Error::TableRemove(table, device.path.clone(), why)
-                })?;
+            partitioner.remove(partitions[child].offset + 1).map_err(|why| {
+                let device = &devices[child];
+                Error::TableRemove(table, device.path.clone(), why)
+            })?;
         }
 
         partitioner.write().map_err(|why| Error::TableWrite(table, path.into(), why))?;

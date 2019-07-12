@@ -1,15 +1,15 @@
 use crate::fs::FileSystem;
 use core::str::FromStr;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct Partition {
-    pub offset:      u64,
-    pub number:      u32,
-    pub filesystem:  Option<FileSystem>,
-    pub partuuid:    Option<Box<str>>,
-    pub partlabel:   Option<Box<str>>,
+    pub offset: u64,
+    pub number: u32,
+    pub filesystem: Option<FileSystem>,
+    pub partuuid: Option<Box<str>>,
+    pub partlabel: Option<Box<str>>,
     pub mbr_variant: PartitionType,
-    pub uuid:        Option<Box<str>>,
+    pub uuid: Option<Box<str>>,
 }
 
 /// Specifies whether the partition table on the disk is **MSDOS** or **GPT**.
@@ -55,5 +55,7 @@ pub enum PartitionType {
 }
 
 impl Default for PartitionType {
-    fn default() -> Self { PartitionType::Primary }
+    fn default() -> Self {
+        PartitionType::Primary
+    }
 }

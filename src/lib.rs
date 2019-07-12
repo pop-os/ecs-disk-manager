@@ -2,9 +2,11 @@
 extern crate bitflags;
 #[macro_use]
 extern crate err_derive;
+#[macro_use]
+extern crate shrinkwraprs;
 
 mod builder;
-mod common;
+mod ops;
 mod systems;
 
 use disk_prober::{
@@ -13,7 +15,7 @@ use disk_prober::{
 use disk_types::*;
 use slotmap::*;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     io,
     path::Path,
     sync::{
@@ -23,8 +25,9 @@ use std::{
 };
 
 pub use self::builder::*;
-pub use disk_types;
 pub use disk_ops::table::PartitionError;
+pub use disk_types;
+pub use ops::create::Error as PartitionCreateError;
 pub use slotmap::DefaultKey as Entity;
 
 #[derive(Debug, Copy, Clone, Eq, Hash, PartialEq)]
@@ -42,6 +45,8 @@ pub enum Error {
     NotGuid(Box<Path>, #[error(cause)] PartitionError),
     #[error(display = "system execution failed")]
     SystemRun(#[error(cause)] systems::Error),
+    #[error(display = "failed to add partition to device")]
+    PartitionAdd(#[error(cause)] PartitionCreateError),
 }
 
 #[derive(Debug, Default)]
@@ -49,8 +54,6 @@ pub struct DiskManager {
     pub entities: HopSlotMap<Entity, Flags>,
     // Components representing current data on devices.
     pub components: DiskComponents,
-    // Operations that will be carried out when systems are invoked
-    ops: DiskOps,
 }
 
 #[derive(Debug, Default)]
@@ -84,28 +87,10 @@ pub struct DiskComponents {
     pub vgs: VolumeGroupShare,
 }
 
-#[derive(Debug, Default)]
-struct DiskOps {
-    pub create:  Vec<(Entity, PartitionBuilder)>,
-    pub format:  HashMap<Entity, FileSystem>,
-    pub mklabel: HashMap<Entity, PartitionTable>,
-    pub remove:  HashMap<Entity, Vec<Entity>>,
-}
-
-impl DiskOps {
-    fn clear(&mut self) {
-        self.create.clear();
-        self.format.clear();
-        self.mklabel.clear();
-        self.remove.clear();
-    }
-}
-
 impl DiskManager {
     /// Drops all recorded entities and their components.
     pub fn clear(&mut self) {
         self.entities.clear();
-        self.components.vgs.clear();
     }
 
     /// Reloads all disk information from the system.
@@ -117,172 +102,7 @@ impl DiskManager {
     /// Apply all queued disk operations on the system.
     pub fn apply(&mut self, cancel: &Arc<AtomicBool>) -> Result<(), Error> {
         let result = systems::run(self, cancel);
-        self.ops.clear();
         result.map_err(Error::SystemRun)
-    }
-
-    // If the device is a loopback, this will kdisplay the backing file.
-    pub fn backing_file(&self, entity: Entity) -> Option<&Path> {
-        self.components.loopbacks.get(entity).map(AsRef::as_ref)
-    }
-
-    // Fetches the children of a device, for devices that have them.
-    pub fn children(&self, entity: Entity) -> Option<&[Entity]> {
-        self.components.children.get(entity).map(Vec::as_slice)
-    }
-
-    /// Fetches a device entity by its entity ID.
-    pub fn device(&self, entity: Entity) -> &Device {
-        self.components.devices.get(entity).expect("invalid device entity; report this as a bug")
-    }
-
-    /// Find a device by its path.
-    pub fn device_by_path(&self, path: &Path) -> Option<(Entity, &Device)> {
-        self.components
-            .devices
-            .iter()
-            .find(|(_, device)| device.path.as_ref() == path)
-    }
-
-    // If the device is a device map, this will return its name.
-    pub fn device_map_name(&self, entity: Entity) -> Option<&str> {
-        self.components.device_maps.get(entity).map(AsRef::as_ref)
-    }
-
-    /// All entities are device entities in the world.
-    pub fn devices<'a>(&'a self) -> impl Iterator<Item = (Entity, &'a Device)> + 'a {
-        self.components.devices.iter()
-    }
-
-    /// If the device is a disk, information about that disk can be retrieved here.
-    pub fn disk(&self, entity: Entity) -> Option<&Disk> {
-        self.components.disks.get(entity)
-    }
-
-    /// Some device entities are LUKS crypto devices.
-    pub fn crypto_luks<'a>(&'a self) -> impl Iterator<Item = (Entity, &'a Luks)> + 'a {
-        self.components.luks.iter()
-    }
-
-    /// Some device entities are physical disks.
-    pub fn disks<'a>(&'a self) -> impl Iterator<Item = (Entity, &'a Disk)> + 'a {
-        self.components.disks.iter()
-    }
-
-    // If the device is a LUKS partition, information about the LUKS device is here.
-    pub fn luks(&self, entity: Entity) -> Option<&Luks> { self.components.luks.get(entity) }
-
-    /// For LV devices which are associated with a VG.
-    pub fn lv(&self, entity: Entity) -> Option<(&LvmVg, &LvmLv)> {
-        self.components
-            .lvs
-            .get(entity)
-            .map(|(lv, vg_entity)| (self.components.vgs.get(*vg_entity), lv))
-    }
-
-    /// Some device entities are logical volumes.
-    pub fn lvm_logical_volumes<'a>(
-        &'a self,
-    ) -> impl Iterator<Item = (Entity, &'a LvmLv, &'a LvmVg)> + 'a {
-        self.components.lvs.iter().map(move |(id, (lvs, vgent))| {
-            let vg = self.components.vgs.get(*vgent);
-            (id, lvs, vg)
-        })
-    }
-
-    /// Some device entities are LVM physical volumes.
-    pub fn lvm_physical_volumes<'a>(
-        &'a self,
-    ) -> impl Iterator<Item = (Entity, &'a LvmPv, Option<&'a LvmVg>)> + 'a {
-        self.components.pvs.iter().map(move |(id, (pvs, vgent))| {
-            let vg = vgent.map(|vgent| self.components.vgs.get(vgent));
-            (id, pvs, vg)
-        })
-    }
-
-    pub fn lvm_volume_groups(&self) -> impl Iterator<Item = (VgEntity, &LvmVg)> {
-        self.components.vgs.iter()
-    }
-
-    pub fn lvm_pvs_of_vg(
-        &self,
-        entity: VgEntity,
-    ) -> impl Iterator<Item = (Entity, &LvmPv)> {
-        self.components
-            .pvs
-            .iter()
-            .filter(move |(_, (_, pv))| *pv == Some(entity))
-            .map(move |(id, (pv, _))| (id, pv))
-    }
-
-    pub fn lvm_lvs_of_vg(
-        &self,
-        entity: VgEntity,
-    ) -> impl Iterator<Item = (Entity, &LvmLv)> {
-        self.components
-            .lvs
-            .iter()
-            .filter(move |(_, (_, lv))| *lv == entity)
-            .map(move |(id, (pv, _))| (id, pv))
-    }
-
-    /// Return the parent of this device.
-    pub fn parents<'b>(&'b self, entity: Entity) -> impl Iterator<Item = Entity> +'b {
-        self.components.children
-            .iter()
-            .filter(move |(pentity, pchildren)| pchildren.contains(&entity))
-            .map(|(pentity, _)| pentity)
-    }
-
-    pub fn partition<'b>(&'b self, entity: Entity) -> Option<&'b Partition> {
-        self.components.partitions.get(entity)
-    }
-
-    /// Some device entities are partitions.
-    pub fn partitions<'a>(
-        &'a self,
-    ) -> impl Iterator<Item = (Entity, &'a Partition)> + 'a {
-        self.components
-            .partitions
-            .iter()
-    }
-
-
-
-    /// For PVs which may be associated with a VG.
-    pub fn pv<'b>(&'b self, entity: Entity) -> Option<(Option<&'b LvmVg>, &'b LvmPv)> {
-        self.components.pvs.get(entity).map(|(pv, vg_entity)| {
-            let vg = vg_entity.map(|ent| self.components.vgs.get(ent));
-            (vg, pv)
-        })
-    }
-
-    pub fn add(&mut self, device: Entity, info: PartitionBuilder) -> Result<(), Error> {
-        self.ops.create.push((device, info));
-        Ok(())
-    }
-
-    pub fn format(&mut self, device: Entity, filesystem: FileSystem) -> Result<(), Error> {
-        self.ops.format.insert(device, filesystem);
-        Ok(())
-    }
-
-    /// Marks the entity for removal, along with all of its children, and their children.
-    pub fn remove(&mut self, entity: Entity) {
-        self.entities[entity] |= Flags::REMOVE;
-
-        fn recurse(
-            entities: &mut HopSlotMap<Entity, Flags>,
-            storage: &SparseSecondaryMap<Entity, Vec<Entity>>,
-            child: Entity
-        ) {
-            for &child in storage.get(child).into_iter().flatten() {
-                entities[child] |= Flags::REMOVE;
-                recurse(entities, storage, child);
-            }
-        }
-
-        recurse(&mut self.entities, &self.components.children, entity);
     }
 }
 
@@ -290,7 +110,9 @@ impl DiskManager {
 pub struct VolumeGroupShare(Vec<LvmVg>);
 
 impl VolumeGroupShare {
-    pub fn clear(&mut self) { self.0.clear(); }
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
 
     pub fn insert(&mut self, input: LvmVg) -> VgEntity {
         self.0.push(input);
@@ -301,22 +123,22 @@ impl VolumeGroupShare {
         self.0.iter().enumerate().map(|(id, entity)| (VgEntity(id as u32), entity))
     }
 
-    pub fn get(&self, index: VgEntity) -> &LvmVg { &self.0[index.0 as usize] }
+    pub fn get(&self, index: VgEntity) -> &LvmVg {
+        &self.0[index.0 as usize]
+    }
 }
 
 bitflags! {
     pub struct Flags: u8 {
-        /// Adds a partition.
-        const ADD    = 1 << 0;
+        /// Create a partition or table.
+        const CREATE = 1 << 0;
         /// Removes a partition or table.
         const REMOVE = 1 << 1;
         /// Resizes a partition.
-        const RESIZE = 1 << 3;
+        const RESIZE = 1 << 2;
         /// Formats a partition.
-        const FORMAT = 1 << 5;
-        /// Creates a new table on device.
-        const TABLE  = 1 << 6;
-        /// Sets a new label on device.
-        const LABEL  = 1 << 7;
+        const FORMAT = 1 << 3;
+        /// Change the label of the device.
+        const LABEL  = 1 << 4;
     }
 }

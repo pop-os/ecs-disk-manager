@@ -13,7 +13,7 @@ pub mod partition {
     use disk_types::FileSystem;
     use std::{io, path::Path, process::Command};
 
-    pub fn create(device: &Path, fs: FileSystem) -> io::Result<()> {
+    pub fn format(device: &Path, fs: FileSystem) -> io::Result<()> {
         let (cmd, args): (&'static str, &'static [&'static str]) = match fs {
             FileSystem::Btrfs => ("mkfs.btrfs", &["-f"]),
             FileSystem::Exfat => ("mkfs.exfat", &[]),
@@ -29,7 +29,7 @@ pub mod partition {
                 }
 
                 ("mkswap", &["-f"])
-            },
+            }
             FileSystem::Xfs => ("mkfs.xfs", &["-f"]),
             _ => unimplemented!("creating unsupported file system"),
         };
@@ -44,7 +44,9 @@ pub mod partition {
         Ok(())
     }
 
-    pub fn resize(device: &Path, fs: FileSystem) -> io::Result<()> { unimplemented!() }
+    pub fn resize(device: &Path, fs: FileSystem) -> io::Result<()> {
+        unimplemented!()
+    }
 
     fn swap_exists(path: &Path) -> bool {
         Command::new("swaplabel").arg(path).status().ok().map_or(false, |stat| stat.success())
