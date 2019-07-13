@@ -85,32 +85,26 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
     for (disk_entity, children_to_free) in partitions_to_free {
         let disk_device = &devices[disk_entity];
         let disk = &disks[disk_entity];
-        let table = disk.table.expect("partitions are being removed from a disk without a table");
-        let path = disk_device.path.as_ref();
+        let path = disk_device.path();
+        super::open_partitioner(disk, path, |partitioner, table| {
+            let partitioner = partitioner
+                .map_err(|why| Error::TableRead(
+                    table,
+                    path.into(),
+                    why
+                ))?;
 
-        // Temporary variables for storing could-be table values.
-        let mut gpt: Gpt;
-
-        // Fetch a generic partitioner depending on the table kind.
-        let partitioner: &mut dyn Partitioner = match table {
-            PartitionTable::Guid => {
-                gpt = Gpt::open(path).map_err(|why| Error::TableRead(table, path.into(), why))?;
-                &mut gpt
+            for &child in &children_to_free {
+                partitioner.remove(partitions[child].offset + 1).map_err(|why| {
+                    let device = &devices[child];
+                    Error::TableRemove(table, device.path.clone(), why)
+                })?;
             }
-            PartitionTable::Mbr => {
-                // TODO: MBR table support.
-                panic!("unimplemented");
-            }
-        };
 
-        for &child in &children_to_free {
-            partitioner.remove(partitions[child].offset + 1).map_err(|why| {
-                let device = &devices[child];
-                Error::TableRemove(table, device.path.clone(), why)
-            })?;
-        }
+            partitioner.write().map_err(|why| Error::TableWrite(table, path.into(), why))
+        })
 
-        partitioner.write().map_err(|why| Error::TableWrite(table, path.into(), why))?;
+        ?;
 
         // On success, free all children from the world.
         for child in children_to_free {

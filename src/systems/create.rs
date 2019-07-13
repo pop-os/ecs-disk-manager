@@ -39,41 +39,35 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
     for (parent_entity, children) in children.iter() {
         let parent_device = &devices[parent_entity];
         if let Some(ref disk) = disks.get(parent_entity) {
-            let table =
-                disk.table.expect("partitions are being removed from a disk without a table");
-            let path = parent_device.path.as_ref();
+            let path = parent_device.path();
+            super::open_partitioner(disk, path, |partitioner, table| {
+                let partitioner = partitioner
+                    .map_err(|why| Error::TableRead(
+                        table,
+                        path.into(),
+                        why
+                    ))?;
 
-            // Temporary variables for storing could-be table values.
-            let mut gpt: Gpt;
 
-            // Fetch a generic partitioner depending on the table kind.
-            let partitioner: &mut dyn Partitioner = match table {
-                PartitionTable::Guid => {
-                    gpt =
-                        Gpt::open(path).map_err(|why| Error::TableRead(table, path.into(), why))?;
-                    &mut gpt
+                // Add partitions to the in-memory partition table.
+                for &child in children {
+                    let child_flags = &entities[child];
+                    if child_flags.contains(Flags::CREATE) {
+                        let child_device = &devices[child];
+                        let partition = &mut partitions[child];
+
+                        let start = partition.offset;
+                        let end = child_device.sectors + start;
+                        let name = partition.partlabel.as_ref().map(AsRef::as_ref);
+                        partition.number = partitioner
+                            .add(start, end, name)
+                            .map_err(|why| Error::TableAdd(table, path.into(), why))?;
+                    }
                 }
-                PartitionTable::Mbr => unimplemented!("no mbr support"),
-            };
 
-            // Add partitions to the in-memory partition table.
-            for &child in children {
-                let child_flags = &entities[child];
-                if child_flags.contains(Flags::CREATE) {
-                    let child_device = &devices[child];
-                    let partition = &mut partitions[child];
-
-                    let start = partition.offset;
-                    let end = child_device.sectors + start;
-                    let name = partition.partlabel.as_ref().map(AsRef::as_ref);
-                    partition.number = partitioner
-                        .add(start, end, name)
-                        .map_err(|why| Error::TableAdd(table, path.into(), why))?;
-                }
-            }
-
-            // Write changes to disk
-            partitioner.write().map_err(|why| Error::TableWrite(table, path.into(), why))?;
+                // Write changes to disk
+                partitioner.write().map_err(|why| Error::TableWrite(table, path.into(), why))
+            })?;
 
             // On success, mark the changes as permanent in the world.
             for &child in children {

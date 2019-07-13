@@ -1,8 +1,13 @@
 pub mod create;
 pub mod format;
+pub mod label;
 pub mod remove;
 pub mod resize;
-mod scan;
+pub mod scan;
+
+mod common;
+
+pub(crate) use self::common::*;
 
 pub use self::scan::scan;
 
@@ -20,6 +25,8 @@ pub enum Error {
     Create(#[error(cause)] create::Error),
     #[error(display = "failure in create system")]
     Format(#[error(cause)] format::Error),
+    #[error(display = "failure in create system")]
+    Label(#[error(cause)] label::Error),
     #[error(display = "failure in remove system")]
     Remove(#[error(cause)] remove::Error),
     // #[error(display = "failure in resize system")]
@@ -35,6 +42,12 @@ impl From<create::Error> for Error {
 impl From<format::Error> for Error {
     fn from(error: format::Error) -> Self {
         Error::Format(error)
+    }
+}
+
+impl From<label::Error> for Error {
+    fn from(error: label::Error) -> Self {
+        Error::Label(error)
     }
 }
 
@@ -73,9 +86,10 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
     }
 
     if world.flags.contains(ManagerFlags::LABEL) {
-        // cancellation_check!(cancel);
-        // label::run(world, cancel)?;
+        cancellation_check!(cancel);
+        label::run(world, cancel)?;
     }
 
     Ok(())
 }
+

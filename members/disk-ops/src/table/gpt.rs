@@ -2,7 +2,7 @@ use disk_types::PartitionTable;
 use std::{fs::{self, File, OpenOptions}, io::{self, Seek, SeekFrom}};
 use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
-use gptman::{GPT, GPTPartitionEntry};
+use gptman::{GPT, GPTPartitionEntry, PartitionName};
 use rand::Rng;
 
 use super::{Partitioner, PartitionError, PartitionResult, TableError};
@@ -70,6 +70,17 @@ impl Gpt {
 
         Ok(Gpt { device, table })
     }
+
+    fn find(&self, sector: u64) -> PartitionResult<u32> {
+        fn between(partition: &GPTPartitionEntry, sector: u64) -> bool {
+            sector >= partition.starting_lba && sector <= partition.ending_lba
+        }
+
+        self.table.iter()
+            .find(|(id, partition)| partition.is_used() && between(partition, sector))
+            .map(|(id, _)| id)
+            .ok_or(PartitionError::PartitionNotFound)
+    }
 }
 
 impl Partitioner for Gpt {
@@ -93,25 +104,28 @@ impl Partitioner for Gpt {
         Ok(id)
     }
 
-    fn remove(&mut self, sector: u64) -> PartitionResult<()> {
-        fn between(partition: &GPTPartitionEntry, sector: u64) -> bool {
-            sector >= partition.starting_lba && sector <= partition.ending_lba
+    fn label(&mut self, sector: u64, label: &str) -> PartitionResult<()> {
+        let needle = self.find(sector)?;
+        for (id, entry) in self.table.iter_mut() {
+            if id == needle {
+                entry.partition_name = PartitionName::from(label);
+                return Ok(());
+            }
         }
 
-        let id = self.table.iter()
-            .find(|(id, partition)| partition.is_used() && between(partition, sector))
-            .map(|(id, _)| id)
-            .ok_or(PartitionError::PartitionNotFound)?;
-
-        self.table.remove(id)
-            .map_err(TableError::from)
-            .map_err(PartitionError::PartitionRemove)?;
-
-        Ok(())
+        Err(PartitionError::PartitionNotFound)
     }
 
     fn last_sector(&self) -> u64 {
         self.table.header.last_usable_lba
+    }
+
+    fn remove(&mut self, sector: u64) -> PartitionResult<()> {
+        self.table.remove(self.find(sector)?)
+            .map_err(TableError::from)
+            .map_err(PartitionError::PartitionRemove)?;
+
+        Ok(())
     }
 
     fn write(&mut self) -> PartitionResult<()> {
