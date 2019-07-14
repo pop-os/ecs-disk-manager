@@ -1,0 +1,13 @@
+[package]
+name = "ecs-disk-manager-dbus"
+version = "0.1.0"
+authors = ["Michael Aaron Murphy <mmstick@pm.me>"]
+edition = "2018"
+description = "DBus daemon for the ECS Disk Manager"
+
+[dependencies]
+ecs-disk-manager = { path = "../../" }
+dbus = "0.6.4"
+err-derive = "0.1.5"
+fern = "0.5.8"
+log = "0.4.7"
