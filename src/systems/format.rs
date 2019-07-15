@@ -12,22 +12,17 @@ pub enum Error {
 
 pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Error> {
     let entities = &mut world.entities;
-    let &mut DiskComponents { ref devices, ref partitions, .. } = &mut world.components;
+    let queued_changes = &mut world.queued_changes;
+    let &mut DiskComponents { ref devices, ref mut partitions, .. } = &mut world.components;
 
-    for (entity, flags) in entities {
-        if flags.contains(Flags::FORMAT) {
+    for entity in entities.keys() {
+        if let Some(fs) = queued_changes.formats.remove(entity) {
             let device = &devices[entity];
-            let partition = &partitions[entity];
-
-            let fs = partition.filesystem.expect(
-                "device marked for formatting \
-                 which did not have a file system defined",
-            );
 
             disk_ops::partition::format(device.path.as_ref(), fs)
                 .map_err(|why| Error::Mkfs(device.path.clone(), fs, why))?;
 
-            *flags -= Flags::FORMAT;
+            partitions[entity].filesystem = Some(fs);
         }
     }
 

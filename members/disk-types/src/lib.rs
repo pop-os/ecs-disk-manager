@@ -1,9 +1,13 @@
+#[macro_use]
+extern crate shrinkwraprs;
+
 pub mod fs;
 pub mod partitions;
 pub mod sector;
 
 pub use crate::{fs::*, partitions::*, sector::*};
 
+use secstr::SecStr;
 use std::path::Path;
 
 #[derive(Debug, Clone)]
@@ -31,9 +35,13 @@ pub struct Device {
 
 impl DeviceExt for Device {
     fn name(&self) -> &str { &self.name }
+
     fn path(&self) -> &Path { &self.path }
+
     fn sectors(&self) -> u64 { self.sectors }
+
     fn logical_sector_size(&self) -> u64 { self.logical_sector_size }
+
     fn physical_sector_size(&self) -> u64 { self.physical_sector_size }
 }
 
@@ -63,4 +71,11 @@ pub struct LvmPv {
 #[derive(Debug, Clone)]
 pub struct Luks {
     pub physical_volume: Box<str>,
+}
+
+#[derive(Debug, Clone, Shrinkwrap)]
+pub struct LuksPassphrase(SecStr);
+
+impl From<SecStr> for LuksPassphrase {
+    fn from(string: SecStr) -> LuksPassphrase { LuksPassphrase(string) }
 }

@@ -9,10 +9,12 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
         ref mut device_maps,
         ref mut loopbacks,
         ref mut luks,
+        ref luks_passphrases,
         ref mut partitions,
         ref mut pvs,
         ref mut lvs,
         ref mut vgs,
+        ..
     } = &mut world.components;
 
     unimplemented!()

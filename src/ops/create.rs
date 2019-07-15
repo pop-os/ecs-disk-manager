@@ -1,4 +1,4 @@
-///! Method for creating a new partition entities in the world.
+/// ! Method for creating a new partition entities in the world.
 use crate::*;
 use disk_types::*;
 
@@ -6,12 +6,25 @@ use disk_types::*;
 pub enum Error {
     #[error(display = "the new partition exceeds the size of the parent device")]
     ExceedsDevice,
+    #[error(display = "LVM volume group is non-existent")]
+    LvmVgNonExistent,
     #[error(display = "the new partition overlaps an existing partition")]
     PartitionOverlap,
     #[error(display = "the end sector lies before the start sector")]
     InputsInverted,
     #[error(display = "parent device is not partitionable")]
     NotPartitionable,
+    #[error(display = "cannot create table on device")]
+    TablesUnsupported,
+}
+
+pub enum PartitionCreate {
+    /// Create a simple, plain file system on the partition.
+    Plain(Box<str>, FileSystem),
+    /// Create a LUKS device, with an optional passphrase.
+    Luks(LuksParams),
+    /// Create a LVM device that will extend the named LVM volume group.
+    Lvm(Box<str>),
 }
 
 impl DiskManager {
@@ -20,35 +33,46 @@ impl DiskManager {
     pub fn create(
         &mut self,
         parent: Entity,
-        builder: impl Into<PartitionBuilder>,
+        start: Sector,
+        end: Sector,
+        variant: PartitionCreate,
     ) -> Result<(), Error> {
-        let builder = builder.into();
-
         // Determine if the partition overlaps, and if not, what its offsets are.
-        let (offset, length) = self.can_create(parent, builder.start, builder.end)?;
+        let (offset, length) = self.can_create(parent, start, end)?;
 
         // Followed by the partition component.
         let mut partition = Partition { offset, ..Default::default() };
 
-        // Fill in the rest of the components based on the kind of partition being created.
-        match builder.kind {
-            Some(PartitionVariant::Luks { physical_volume, password, file_system }) => {
-                unimplemented!()
+        enum VgItem {
+            Existent(VgEntity),
+            NonExistent(Box<str>),
+        }
+
+        let mut luks_comps = None;
+        let mut lvm_comps = None;
+
+        match variant {
+            PartitionCreate::Plain(label, filesystem) => {
+                partition.partlabel = Some(label);
+                partition.filesystem = Some(filesystem);
             }
-            Some(PartitionVariant::Lvm { volume_group, table }) => unimplemented!(),
-            Some(PartitionVariant::FileSystem { label, file_system }) => {
-                partition.partlabel = label;
-                partition.filesystem = Some(file_system);
+            PartitionCreate::Luks(luks) => {
+                partition.filesystem = Some(FileSystem::Luks);
+                luks_comps = Some(luks);
             }
-            None => {}
+            PartitionCreate::Lvm(group) => {
+                partition.filesystem = Some(FileSystem::Lvm);
+                let vg = self
+                    .lvm_volume_group(&group)
+                    .map(|(id, _)| id)
+                    .map_or_else(move || VgItem::NonExistent(group), VgItem::Existent);
+
+                lvm_comps = Some(vg);
+            }
         }
 
         // Create a new device entity for the new partition.
-        let entity = self.entities.insert(if partition.filesystem.is_some() {
-            Flags::CREATE | Flags::FORMAT
-        } else {
-            Flags::CREATE
-        });
+        let entity = self.entities.insert(Flags::CREATE);
 
         // The partition device will have the same sector sizes as the disk it is created on.
         let sector_sizes = {
@@ -60,10 +84,10 @@ impl DiskManager {
         self.components.devices.insert(
             entity,
             Device {
-                name: Box::from(""),
-                path: Box::from(Path::new("")),
-                sectors: length,
-                logical_sector_size: sector_sizes.0,
+                name:                 Box::from(""),
+                path:                 Box::from(Path::new("")),
+                sectors:              length,
+                logical_sector_size:  sector_sizes.0,
                 physical_sector_size: sector_sizes.1,
             },
         );
@@ -74,8 +98,53 @@ impl DiskManager {
         // Associate the partition entity with its parent.
         self.components.children[parent].push(entity);
 
+        // Assign the lvm components if this is a logical volume.
+        if let Some(vg) = lvm_comps {
+            self.flags |= ManagerFlags::RELOAD_VGS;
+
+            let vg_entity = match vg {
+                VgItem::Existent(entity) => entity,
+                VgItem::NonExistent(name) => self.components.vgs.insert(LvmVg {
+                    name,
+                    extent_size: 4 * 1024 * 1024,
+                    extents: 0,
+                    extents_free: 0,
+                }),
+            };
+
+            // Extend the theoretical amount of extents.
+            let parent_sector_size = self.components.devices[parent].logical_sector_size;
+            let vg = self.components.vgs.get_mut(vg_entity);
+            let extents = (parent_sector_size * length) / vg.extent_size;
+            vg.extents += extents;
+            vg.extents_free += extents;
+
+            let pv = LvmPv { path: Box::from(Path::new("")), uuid: Box::from("") };
+
+            self.components.pvs.insert(entity, (pv, Some(vg_entity)));
+        }
+
+        // Assign the luks components if this configures a LUKS PV
+        if let Some(luks) = luks_comps {
+            self.queued_changes.luks_params.insert(entity, luks);
+        }
+
         // Remind the manager that the creation system must be run.
         self.flags |= ManagerFlags::CREATE;
+
+        Ok(())
+    }
+
+    /// Define that a new partition table will be written to this device.
+    pub fn create_table(&mut self, entity: Entity, kind: PartitionTable) -> Result<(), Error> {
+        let disk = self.components.disks.get_mut(entity).ok_or(Error::TablesUnsupported)?;
+        disk.table = Some(kind);
+
+        self.entities[entity] |= Flags::CREATE;
+        self.flags |= ManagerFlags::CREATE;
+
+        // Mark this device to be wiped, and its children freed.
+        self.remove(entity);
 
         Ok(())
     }

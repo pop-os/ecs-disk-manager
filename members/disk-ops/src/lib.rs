@@ -31,6 +31,7 @@ pub mod partition {
                 ("mkswap", &["-f"])
             }
             FileSystem::Xfs => ("mkfs.xfs", &["-f"]),
+            FileSystem::Lvm => ("pvcreate", &[]),
             _ => unimplemented!("creating unsupported file system"),
         };
 
@@ -44,9 +45,7 @@ pub mod partition {
         Ok(())
     }
 
-    pub fn resize(device: &Path, fs: FileSystem) -> io::Result<()> {
-        unimplemented!()
-    }
+    pub fn resize(device: &Path, fs: FileSystem) -> io::Result<()> { unimplemented!() }
 
     fn swap_exists(path: &Path) -> bool {
         Command::new("swaplabel").arg(path).status().ok().map_or(false, |stat| stat.success())

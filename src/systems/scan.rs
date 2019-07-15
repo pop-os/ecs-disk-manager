@@ -3,7 +3,7 @@ pub use self::linux::*;
 
 #[cfg(target_os = "linux")]
 mod linux {
-    use crate::{*, Error as DiskError};
+    use crate::{Error as DiskError, *};
     use disk_types::*;
     use std::fs::read_link;
 
@@ -18,10 +18,10 @@ mod linux {
             world.components.devices.insert(
                 whole_entity,
                 Device {
-                    name: Box::from(info.device),
-                    path: Box::from(info.path),
-                    sectors: info.sectors,
-                    logical_sector_size: info.logical_sector_size,
+                    name:                 Box::from(info.device),
+                    path:                 Box::from(info.path),
+                    sectors:              info.sectors,
+                    logical_sector_size:  info.logical_sector_size,
                     physical_sector_size: info.physical_sector_size,
                 },
             );
@@ -42,13 +42,13 @@ mod linux {
                 world.components.partitions.insert(
                     whole_entity,
                     Partition {
-                        offset: 0,
-                        number: 0,
-                        filesystem: fstype.parse().ok(),
-                        partuuid: None,
-                        partlabel: None,
+                        offset:      0,
+                        number:      0,
+                        filesystem:  fstype.parse().ok(),
+                        partuuid:    None,
+                        partlabel:   None,
                         mbr_variant: PartitionType::Primary,
-                        uuid: info.uuid,
+                        uuid:        info.uuid,
                     },
                 );
             }
@@ -61,10 +61,10 @@ mod linux {
                 world.components.devices.insert(
                     part_entity,
                     Device {
-                        name: partition.device,
-                        path: partition.path,
-                        sectors: partition.sectors,
-                        logical_sector_size: info.logical_sector_size,
+                        name:                 partition.device,
+                        path:                 partition.path,
+                        sectors:              partition.sectors,
+                        logical_sector_size:  info.logical_sector_size,
                         physical_sector_size: info.physical_sector_size,
                     },
                 );
@@ -72,13 +72,13 @@ mod linux {
                 world.components.partitions.insert(
                     part_entity,
                     Partition {
-                        offset: partition.offset,
-                        number: partition.no,
-                        filesystem: partition.fstype.and_then(|fstype| fstype.parse().ok()),
-                        partuuid: partition.partuuid,
-                        partlabel: partition.partlabel,
+                        offset:      partition.offset,
+                        number:      partition.no,
+                        filesystem:  partition.fstype.and_then(|fstype| fstype.parse().ok()),
+                        partuuid:    partition.partuuid,
+                        partlabel:   partition.partlabel,
                         mbr_variant: PartitionType::Primary,
-                        uuid: partition.uuid,
+                        uuid:        partition.uuid,
                     },
                 );
             }
@@ -93,18 +93,27 @@ mod linux {
             eprintln!("    is the lvmdbus1 daemon installed?");
         }
 
+        // Associate LUKS entities.
+        for (entity, partition) in &world.components.partitions {
+            match partition.filesystem {
+                Some(FileSystem::Luks) => {
+                    world.components.luks.insert(entity, ());
+                }
+                _ => (),
+            }
+        }
+
         Ok(())
     }
 
     fn associate_children(world: &mut DiskManager) {
-        let &mut DiskComponents { ref devices, ref mut children, .. } =
-            &mut world.components;
+        let &mut DiskComponents { ref devices, ref mut children, .. } = &mut world.components;
 
         for (entity, device) in devices {
             for slave in slaves_iter(&device.name) {
                 for (other_entity, other_device) in devices {
                     if other_device.name == slave {
-                        println!(
+                        eprintln!(
                             "mapping parent-child association: {} <-> {}",
                             device.path.display(),
                             other_device.path.display()
@@ -160,9 +169,9 @@ mod linux {
             let vg = vg.map_err(DiskError::LvmProber)?;
 
             let vg_entity = vgs.insert(LvmVg {
-                name: vg.name.clone().into(),
-                extent_size: vg.extent_size,
-                extents: vg.extents,
+                name:         vg.name.clone().into(),
+                extent_size:  vg.extent_size,
+                extents:      vg.extents,
                 extents_free: vg.extents_free,
             });
 

@@ -1,4 +1,4 @@
-///! Methods for fetching information in the world.
+/// ! Methods for fetching information in the world.
 use crate::*;
 
 impl DiskManager {
@@ -33,23 +33,16 @@ impl DiskManager {
     }
 
     /// If the device is a disk, information about that disk can be retrieved here.
-    pub fn disk(&self, entity: Entity) -> Option<&Disk> {
-        self.components.disks.get(entity)
-    }
+    pub fn disk(&self, entity: Entity) -> Option<&Disk> { self.components.disks.get(entity) }
 
     /// Some device entities are LUKS crypto devices.
-    pub fn crypto_luks<'a>(&'a self) -> impl Iterator<Item = (Entity, &'a Luks)> + 'a {
-        self.components.luks.iter()
+    pub fn crypto_luks<'a>(&'a self) -> impl Iterator<Item = Entity> + 'a {
+        self.components.luks.keys()
     }
 
     /// Some device entities are physical disks.
     pub fn disks<'a>(&'a self) -> impl Iterator<Item = (Entity, &'a Disk)> + 'a {
         self.components.disks.iter()
-    }
-
-    // If the device is a LUKS partition, information about the LUKS device is here.
-    pub fn luks(&self, entity: Entity) -> Option<&Luks> {
-        self.components.luks.get(entity)
     }
 
     /// For LV devices which are associated with a VG.
@@ -80,6 +73,16 @@ impl DiskManager {
         })
     }
 
+    pub fn lvm_volume_group(&self, name: &str) -> Option<(VgEntity, &LvmVg)> {
+        self.components
+            .vgs
+            .0
+            .iter()
+            .enumerate()
+            .find(|(_, vg)| vg.name.as_ref() == name)
+            .map(|(id, vg)| (VgEntity(id as u32), vg))
+    }
+
     pub fn lvm_volume_groups(&self) -> impl Iterator<Item = (VgEntity, &LvmVg)> {
         self.components.vgs.iter()
     }
@@ -105,7 +108,7 @@ impl DiskManager {
         self.components
             .children
             .iter()
-            .filter(move |(pentity, pchildren)| pchildren.contains(&entity))
+            .filter(move |(_, pchildren)| pchildren.contains(&entity))
             .map(|(pentity, _)| pentity)
     }
 
@@ -123,6 +126,25 @@ impl DiskManager {
         self.components.pvs.get(entity).map(|(pv, vg_entity)| {
             let vg = vg_entity.map(|ent| self.components.vgs.get(ent));
             (vg, pv)
+        })
+    }
+
+    /// Checks if the given sector is allocated in the partition table of the device.
+    ///
+    /// # Notes
+    ///
+    /// If the device does not support children, `false` is returned.
+    pub fn sector_overlaps(&self, entity: Entity, sector: u64) -> bool {
+        let devices = &self.components.devices;
+        let partitions = &self.components.partitions;
+
+        self.components.children.get(entity).map_or(false, |children| {
+            children.iter().any(|&child| {
+                let device = &devices[child];
+                let partition = &partitions[child];
+
+                sector >= partition.offset && sector <= device.sectors
+            })
         })
     }
 }

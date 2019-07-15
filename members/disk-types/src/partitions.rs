@@ -3,13 +3,13 @@ use core::str::FromStr;
 
 #[derive(Debug, Default, Clone)]
 pub struct Partition {
-    pub offset: u64,
-    pub number: u32,
-    pub filesystem: Option<FileSystem>,
-    pub partuuid: Option<Box<str>>,
-    pub partlabel: Option<Box<str>>,
+    pub offset:      u64,
+    pub number:      u32,
+    pub filesystem:  Option<FileSystem>,
+    pub partuuid:    Option<Box<str>>,
+    pub partlabel:   Option<Box<str>>,
     pub mbr_variant: PartitionType,
-    pub uuid: Option<Box<str>>,
+    pub uuid:        Option<Box<str>>,
 }
 
 /// Specifies whether the partition table on the disk is **MSDOS** or **GPT**.
@@ -24,8 +24,8 @@ impl FromStr for PartitionTable {
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         let table = match input {
-            "dos" => PartitionTable::Mbr,
-            "gpt" => PartitionTable::Guid,
+            "dos" | "mbr" => PartitionTable::Mbr,
+            "guid" | "gpt" => PartitionTable::Guid,
             _ => return Err(()),
         };
 
@@ -37,7 +37,7 @@ impl From<PartitionTable> for &'static str {
     fn from(table: PartitionTable) -> Self {
         match table {
             PartitionTable::Mbr => "mbr",
-            PartitionTable::Guid => "gpt",
+            PartitionTable::Guid => "guid",
         }
     }
 }
@@ -55,7 +55,5 @@ pub enum PartitionType {
 }
 
 impl Default for PartitionType {
-    fn default() -> Self {
-        PartitionType::Primary
-    }
+    fn default() -> Self { PartitionType::Primary }
 }

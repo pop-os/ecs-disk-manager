@@ -29,32 +29,24 @@ pub enum Error {
     Label(#[error(cause)] label::Error),
     #[error(display = "failure in remove system")]
     Remove(#[error(cause)] remove::Error),
-    // #[error(display = "failure in resize system")]
-    // Resize(#[error(cause)] resize::Error),
+    /* #[error(display = "failure in resize system")]
+     * Resize(#[error(cause)] resize::Error), */
 }
 
 impl From<create::Error> for Error {
-    fn from(error: create::Error) -> Self {
-        Error::Create(error)
-    }
+    fn from(error: create::Error) -> Self { Error::Create(error) }
 }
 
 impl From<format::Error> for Error {
-    fn from(error: format::Error) -> Self {
-        Error::Format(error)
-    }
+    fn from(error: format::Error) -> Self { Error::Format(error) }
 }
 
 impl From<label::Error> for Error {
-    fn from(error: label::Error) -> Self {
-        Error::Label(error)
-    }
+    fn from(error: label::Error) -> Self { Error::Label(error) }
 }
 
 impl From<remove::Error> for Error {
-    fn from(error: remove::Error) -> Self {
-        Error::Remove(error)
-    }
+    fn from(error: remove::Error) -> Self { Error::Remove(error) }
 }
 
 macro_rules! cancellation_check {
@@ -80,6 +72,8 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
         create::run(world, cancel)?;
     }
 
+    // TODO: Format and Label can be applied in parallel.
+
     if world.flags.contains(ManagerFlags::FORMAT) {
         cancellation_check!(cancel);
         format::run(world, cancel)?;
@@ -92,4 +86,3 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
 
     Ok(())
 }
-

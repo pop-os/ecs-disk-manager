@@ -1,4 +1,5 @@
 use crate::*;
+use std::collections::HashMap;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -9,51 +10,49 @@ pub enum Error {
 }
 
 pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Error> {
-    let entities = &mut world.entities;
+    let queued_changes = &mut world.queued_changes;
     let &mut DiskComponents {
         ref mut children,
         ref mut devices,
         ref mut disks,
-        ref mut device_maps,
-        ref mut loopbacks,
-        ref mut luks,
         ref mut partitions,
-        ref mut pvs,
-        ref mut lvs,
-        ref mut vgs,
+        ..
     } = &mut world.components;
+
+    // Store changes that are queued to be applied.
+    let mut changed: HashMap<Entity, Box<str>> = HashMap::new();
 
     for (parent_entity, children) in children.iter() {
         let parent_device = &devices[parent_entity];
         if let Some(ref disk) = disks.get(parent_entity) {
-            let disk = &disks[parent_entity];
             let path = parent_device.path();
-            super::open_partitioner(disk, path, |partitioner, table| {
-                let partitioner = partitioner
-                    .map_err(|why| Error::TableRead(
-                        table,
-                        path.into(),
-                        why
-                    ))?;
 
+            // Load the disk's table into memory, in preparation for potential modifications.
+            super::open_partitioner(disk, path, |partitioner, table| {
+                let partitioner =
+                    partitioner.map_err(|why| Error::TableRead(table, path.into(), why))?;
+
+                // Locate the children who have new labels queued.
                 for &child in children {
-                    if entities[child].contains(Flags::LABEL) {
+                    if let Some(new_label) = queued_changes.labels.remove(child) {
                         let partition = &partitions[child];
-                        let label = partition.partlabel.as_ref().map_or("", AsRef::as_ref);
-                        partitioner.label(partition.offset + 1, label)
+                        partitioner
+                            .label(partition.offset + 1, &new_label)
                             .map_err(Error::LabelWrite)?;
+                        changed.insert(child, new_label);
                     }
                 }
 
                 Ok(())
             })?;
+
+            // Apply the new labels to the in-memory representation.
+            for (entity, new_label) in changed.drain() {
+                partitions[entity].partlabel = Some(new_label);
+            }
         } else {
             unimplemented!("unsupported device type")
         }
-    }
-
-    for flags in entities.values_mut() {
-        *flags -= Flags::LABEL;
     }
 
     Ok(())

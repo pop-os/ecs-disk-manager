@@ -1,11 +1,10 @@
-///! Miscellanious methods for modifying entities in the world.
+/// ! Miscellanious methods for modifying entities in the world.
 use crate::*;
 
 impl DiskManager {
     /// Sets the label of a partition.
     pub fn label<S: Into<Box<str>>>(&mut self, entity: Entity, label: S) {
-        self.components.partitions[entity].partlabel = Some(label.into());
-        self.entities[entity] |= Flags::LABEL;
+        self.queued_changes.labels.insert(entity, label.into());
         self.flags |= ManagerFlags::LABEL;
     }
 
@@ -15,7 +14,7 @@ impl DiskManager {
 
         fn recurse(
             entities: &mut HopSlotMap<Entity, Flags>,
-            storage: &SparseSecondaryMap<Entity, Vec<Entity>>,
+            storage: &SecondaryMap<Entity, Vec<Entity>>,
             child: Entity,
         ) {
             for &child in storage.get(child).into_iter().flatten() {

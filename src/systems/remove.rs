@@ -23,18 +23,13 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
         ref mut children,
         ref mut devices,
         ref mut disks,
-        ref mut device_maps,
-        ref mut loopbacks,
-        ref mut luks,
         ref mut partitions,
-        ref mut pvs,
-        ref mut lvs,
-        ref mut vgs,
+        ..
     } = &mut world.components;
 
     fn free_children(
         entities: &mut HopSlotMap<Entity, Flags>,
-        storage: &mut SparseSecondaryMap<Entity, Vec<Entity>>,
+        storage: &mut SecondaryMap<Entity, Vec<Entity>>,
         parent: Entity,
     ) {
         let mut freed = Vec::new();
@@ -75,10 +70,17 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
     // Wipe all devices to be wiped.
     for entity in devices_to_wipe {
         let device = &devices[entity];
-        wipe(&device.path).map_err(|why| Error::Wipefs(device.path.clone(), why))?;
+        let disk = &mut disks[entity];
 
-        entities.remove(entity);
+        wipe(&device.path).map_err(|why| Error::Wipefs(device.path.clone(), why))?;
+        partitions.remove(entity);
         free_children(entities, children, entity);
+
+        let flags = &mut entities[entity];
+        *flags -= Flags::REMOVE;
+        if !flags.contains(Flags::CREATE) {
+            disk.table = None;
+        }
     }
 
     // Free all partitions from their parent devices.
@@ -87,12 +89,8 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
         let disk = &disks[disk_entity];
         let path = disk_device.path();
         super::open_partitioner(disk, path, |partitioner, table| {
-            let partitioner = partitioner
-                .map_err(|why| Error::TableRead(
-                    table,
-                    path.into(),
-                    why
-                ))?;
+            let partitioner =
+                partitioner.map_err(|why| Error::TableRead(table, path.into(), why))?;
 
             for &child in &children_to_free {
                 partitioner.remove(partitions[child].offset + 1).map_err(|why| {
@@ -102,9 +100,7 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
             }
 
             partitioner.write().map_err(|why| Error::TableWrite(table, path.into(), why))
-        })
-
-        ?;
+        })?;
 
         // On success, free all children from the world.
         for child in children_to_free {

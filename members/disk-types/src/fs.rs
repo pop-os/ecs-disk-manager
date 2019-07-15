@@ -70,7 +70,7 @@ impl FromStr for FileSystem {
             "ext3" => FileSystem::Ext3,
             "ext4" => FileSystem::Ext4,
             "f2fs" => FileSystem::F2fs,
-            "fat16" |"fat32" | "vfat" => FileSystem::Vfat,
+            "fat16" | "fat32" | "vfat" => FileSystem::Vfat,
             "iso9660" => FileSystem::Iso9660,
             "luks" | "crypto_luks" => FileSystem::Luks,
             "lvm" | "lvm2_member" => FileSystem::Lvm,
