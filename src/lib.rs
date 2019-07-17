@@ -38,7 +38,7 @@ new_key_type! {
 }
 
 bitflags! {
-    pub struct Flags: u8 {
+    pub struct EntityFlags: u8 {
         /// Create a partition or table.
         const CREATE = 1 << 0;
         /// Removes a partition or table.
@@ -46,8 +46,8 @@ bitflags! {
     }
 }
 
-impl Default for Flags {
-    fn default() -> Self { Flags::empty() }
+impl Default for EntityFlags {
+    fn default() -> Self { EntityFlags::empty() }
 }
 
 bitflags! {
@@ -90,10 +90,10 @@ pub enum Error {
 #[derive(Debug, Default)]
 pub struct DiskManager {
     /// All of the device entities stored in the world, and their associated flags.
-    pub entities: HopSlotMap<DeviceEntity, Flags>,
+    pub entities: HopSlotMap<DeviceEntity, EntityFlags>,
 
     /// Volume group entities are similar to, but not quite the same as a device.
-    pub vg_entities: HopSlotMap<VgEntity, ()>,
+    pub vg_entities: HopSlotMap<VgEntity, EntityFlags>,
 
     /// Components representing current data on devices.
     pub components: DeviceComponents,
@@ -139,6 +139,8 @@ pub struct DeviceComponents {
     pub luks: SecondaryMap<DeviceEntity, ()>,
 
     /// Secured passphrases for LUKS devices.
+    ///
+    /// Passphrases are secured via [secstr](https://docs.rs/secstr).
     pub luks_passphrases: SecondaryMap<DeviceEntity, LuksPassphrase>,
 
     /// Information about a device if it is a LVM logical volume.
@@ -188,7 +190,7 @@ impl DiskManager {
         let mut entities_to_remove: Vec<DeviceEntity> = Vec::new();
 
         for (entity, flags) in entities.iter_mut() {
-            if flags.contains(Flags::CREATE) {
+            if flags.contains(EntityFlags::CREATE) {
                 entities_to_remove.push(entity);
             }
             *flags = Default::default();

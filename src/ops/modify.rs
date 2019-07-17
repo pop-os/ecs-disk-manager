@@ -10,15 +10,15 @@ impl DiskManager {
 
     /// Marks the entity for removal, along with all of its children, and their children.
     pub fn remove(&mut self, entity: DeviceEntity) {
-        self.entities[entity] |= Flags::REMOVE;
+        self.entities[entity] |= EntityFlags::REMOVE;
 
         fn recurse(
-            entities: &mut HopSlotMap<DeviceEntity, Flags>,
+            entities: &mut HopSlotMap<DeviceEntity, EntityFlags>,
             storage: &SecondaryMap<DeviceEntity, Vec<DeviceEntity>>,
             child: DeviceEntity,
         ) {
             for &child in storage.get(child).into_iter().flatten() {
-                entities[child] |= Flags::REMOVE;
+                entities[child] |= EntityFlags::REMOVE;
                 recurse(entities, storage, child);
             }
         }

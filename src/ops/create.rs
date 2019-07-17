@@ -54,7 +54,7 @@ impl DiskManager {
         }
 
         // Create a new device entity for the new partition.
-        let entity = self.entities.insert(Flags::CREATE);
+        let entity = self.entities.insert(EntityFlags::CREATE);
 
         // The partition device will have the same sector sizes as the disk it is created on.
         let sector_sizes = {
@@ -126,7 +126,7 @@ impl DiskManager {
         let disk = self.components.disks.get_mut(entity).ok_or(Error::TablesUnsupported)?;
         disk.table = Some(kind);
 
-        self.entities[entity] |= Flags::CREATE;
+        self.entities[entity] |= EntityFlags::CREATE;
         self.flags |= ManagerFlags::CREATE;
 
         // Mark this device to be wiped, and its children freed.
@@ -162,7 +162,7 @@ impl DiskManager {
                 // Check if there is any overlap, ignoring children marked for removal.
                 for &child in children {
                     let child_flags = entities[child];
-                    if !child_flags.contains(Flags::REMOVE) {
+                    if !child_flags.contains(EntityFlags::REMOVE) {
                         let partdev = &self.components.devices[child];
                         let partition = &self.components.partitions[child];
 

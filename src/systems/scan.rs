@@ -13,7 +13,7 @@ mod linux {
             let probed = res.map_err(DiskError::BlockProber)?;
             let info = probed.probe().map_err(DiskError::BlockProber)?;
 
-            let whole_entity = world.entities.insert(Flags::empty());
+            let whole_entity = world.entities.insert(EntityFlags::empty());
 
             world.components.devices.insert(
                 whole_entity,
@@ -55,7 +55,7 @@ mod linux {
 
             let mut children = Vec::new();
             for partition in info.partitions {
-                let part_entity = world.entities.insert(Flags::empty());
+                let part_entity = world.entities.insert(EntityFlags::empty());
                 children.push(part_entity);
 
                 world.components.devices.insert(
@@ -172,7 +172,7 @@ mod linux {
         for vg in lvm_prober.iter_vgs() {
             let vg = vg.map_err(DiskError::LvmProber)?;
 
-            let vg_entity = vg_entities.insert(());
+            let vg_entity = vg_entities.insert(EntityFlags::empty());
             let mut child_devices = Vec::new();
 
             volume_groups.insert(

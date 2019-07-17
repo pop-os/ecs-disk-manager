@@ -28,7 +28,7 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
     } = &mut world.components;
 
     fn free_children(
-        entities: &mut HopSlotMap<DeviceEntity, Flags>,
+        entities: &mut HopSlotMap<DeviceEntity, EntityFlags>,
         storage: &mut SecondaryMap<DeviceEntity, Vec<DeviceEntity>>,
         parent: DeviceEntity,
     ) {
@@ -52,13 +52,13 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
     let mut devices_to_wipe = Vec::new();
     let mut partitions_to_free = HashMap::new();
     for disk_entity in disks.keys() {
-        if entities[disk_entity].contains(Flags::REMOVE) {
+        if entities[disk_entity].contains(EntityFlags::REMOVE) {
             devices_to_wipe.push(disk_entity);
         } else if let Some(children) = children.get(disk_entity) {
             let free = children
                 .into_iter()
                 .cloned()
-                .filter(|&entity| entities[entity].contains(Flags::REMOVE))
+                .filter(|&entity| entities[entity].contains(EntityFlags::REMOVE))
                 .collect::<Vec<DeviceEntity>>();
 
             if !free.is_empty() {
@@ -77,8 +77,8 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
         free_children(entities, children, entity);
 
         let flags = &mut entities[entity];
-        *flags -= Flags::REMOVE;
-        if !flags.contains(Flags::CREATE) {
+        *flags -= EntityFlags::REMOVE;
+        if !flags.contains(EntityFlags::CREATE) {
             disk.table = None;
         }
     }

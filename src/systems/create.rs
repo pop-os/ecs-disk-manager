@@ -50,7 +50,7 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
             {
                 // Check if the disk needs to be wiped and initialized with a new table.
                 let parent_flags = &mut entities[parent_entity];
-                if parent_flags.contains(Flags::CREATE) {
+                if parent_flags.contains(EntityFlags::CREATE) {
                     let table = disk.table.ok_or_else(|| Error::TableMissing(path.into()))?;
                     let sector_size = parent_device.logical_sector_size();
 
@@ -64,7 +64,7 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
                         PartitionTable::Mbr => unimplemented!("mbr tables are not supported"),
                     }
 
-                    *parent_flags -= Flags::CREATE;
+                    *parent_flags -= EntityFlags::CREATE;
                 }
             }
 
@@ -76,7 +76,7 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
                 // Add partitions to the in-memory partition table.
                 for &child in children {
                     let child_flags = &entities[child];
-                    if child_flags.contains(Flags::CREATE) {
+                    if child_flags.contains(EntityFlags::CREATE) {
                         let child_device = &devices[child];
                         let partition = &mut partitions[child];
 
@@ -95,7 +95,7 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
 
             // On success, mark the changes as permanent in the world.
             for &child in children {
-                entities[child] -= Flags::CREATE;
+                entities[child] -= EntityFlags::CREATE;
 
                 // Take the file system of the newly-created partition, and queue it
                 // to be applied in the format system.
