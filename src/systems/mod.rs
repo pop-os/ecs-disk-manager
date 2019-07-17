@@ -11,7 +11,8 @@ pub(crate) use self::common::*;
 
 pub use self::scan::scan;
 
-use crate::{DiskManager, ManagerFlags};
+use self::create::CreationSystem;
+use crate::{DiskComponents, DiskEntities, ManagerFlags};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -57,31 +58,42 @@ macro_rules! cancellation_check {
     };
 }
 
-pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Error> {
-    if world.flags.contains(ManagerFlags::REMOVE) {
-        remove::run(world, cancel)?;
+#[derive(Debug, Default)]
+pub(crate) struct DiskSystems {
+    pub creation: CreationSystem,
+}
+
+pub(crate) fn run(
+    entities: &mut DiskEntities,
+    components: &mut DiskComponents,
+    systems: &mut DiskSystems,
+    flags: &ManagerFlags,
+    cancel: &Arc<AtomicBool>,
+) -> Result<(), Error> {
+    if flags.contains(ManagerFlags::REMOVE) {
+        remove::run(entities, components, cancel)?;
     }
 
-    if world.flags.contains(ManagerFlags::RESIZE) {
+    if flags.contains(ManagerFlags::RESIZE) {
         // cancellation_check!(cancel);
         // resize::run(world, cancel)?;
     }
 
-    if world.flags.contains(ManagerFlags::CREATE) {
+    if flags.contains(ManagerFlags::CREATE) {
         cancellation_check!(cancel);
-        create::run(world, cancel)?;
+        systems.creation.run(entities, components, cancel)?
     }
 
     // TODO: Format and Label can be applied in parallel.
 
-    if world.flags.contains(ManagerFlags::FORMAT) {
+    if flags.contains(ManagerFlags::FORMAT) {
         cancellation_check!(cancel);
-        format::run(world, cancel)?;
+        format::run(entities, components, cancel)?;
     }
 
-    if world.flags.contains(ManagerFlags::LABEL) {
+    if flags.contains(ManagerFlags::LABEL) {
         cancellation_check!(cancel);
-        label::run(world, cancel)?;
+        label::run(entities, components, cancel)?;
     }
 
     Ok(())

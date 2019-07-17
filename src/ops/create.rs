@@ -25,90 +25,79 @@ pub enum PartitionCreate {
     Luks(LuksParams),
 }
 
+pub enum CreateOnParent {
+    Device { entity: DeviceEntity, start: Sector, end: Sector },
+    VolumeGroup { entity: VgEntity, length: u64 },
+}
+
 impl DiskManager {
-    /// Defines to create a new partition on a device, along with any devices
-    /// to create from that new partition.
+    /// Create a new volume on a device or volume group.
     pub fn create(
         &mut self,
-        parent: DeviceEntity,
-        start: Sector,
-        end: Sector,
+        parent: CreateOnParent,
         label: Box<str>,
         variant: PartitionCreate,
     ) -> Result<(), Error> {
-        // Determine if the partition overlaps, and if not, what its offsets are.
-        let (offset, length) = self.can_create(parent, start, end)?;
+        let (offset, length, logical_sector_size, physical_sector_size, parent) = match parent {
+            CreateOnParent::Device { entity, start, end } => {
+                let device = &self.components.devices.devices[entity];
+                let sectors = self.can_create_on_device(entity, device, start, end)?;
+
+                (
+                    sectors.0,
+                    sectors.1,
+                    device.logical_sector_size,
+                    device.physical_sector_size,
+                    EntityVariant::Device(entity),
+                )
+            }
+            CreateOnParent::VolumeGroup { entity, length } => {
+                self.can_create_on_vg(entity, length)?;
+
+                (0, length, 512, 512, EntityVariant::VolumeGroup(entity))
+            }
+        };
 
         // Followed by the partition component.
         let mut partition = Partition { partlabel: Some(label), offset, ..Default::default() };
-        let mut luks_comps = None;
 
+        // Create a new device entity for the new partition.
+        let entity = self.entities.devices.insert(EntityFlags::CREATE);
+
+        // Are you are a LUKS device, or a plain-old-filesystem?
         match variant {
             PartitionCreate::Plain(filesystem) => {
                 partition.filesystem = Some(filesystem);
             }
             PartitionCreate::Luks(luks) => {
                 partition.filesystem = Some(FileSystem::Luks);
-                luks_comps = Some(luks);
+                self.components.queued_changes.luks_params.insert(entity, luks);
             }
         }
 
-        // Create a new device entity for the new partition.
-        let entity = self.entities.insert(EntityFlags::CREATE);
-
-        // The partition device will have the same sector sizes as the disk it is created on.
-        let sector_sizes = {
-            let device = &self.components.devices[parent];
-            (device.logical_sector_size, device.physical_sector_size)
-        };
-
         // Then create the device component for the new entity.
-        self.components.devices.insert(
+        self.components.queued_changes.devices.insert(
             entity,
             Device {
-                name:                 Box::from(""),
-                path:                 Box::from(Path::new("")),
-                sectors:              length,
-                logical_sector_size:  sector_sizes.0,
-                physical_sector_size: sector_sizes.1,
+                name: Box::from(""),
+                path: Box::from(Path::new("")),
+                sectors: length,
+                logical_sector_size,
+                physical_sector_size,
             },
         );
 
         // Add the partition component to the entity.
-        self.components.partitions.insert(entity, partition);
+        self.components.queued_changes.partitions.insert(entity, partition);
 
         // Associate the partition entity with its parent.
-        self.components.children[parent].push(entity);
-
-        // // Assign the lvm components if this is a logical volume.
-        // if let Some(vg) = lvm_comps {
-        //     self.flags |= ManagerFlags::RELOAD_VGS;
-
-        //     let vg_entity = match vg {
-        //         VgItem::Existent(entity) => entity,
-        //         VgItem::NonExistent(name) => self.components.vgs.insert(LvmVg {
-        //             name,
-        //             extent_size: 4 * 1024 * 1024,
-        //             extents: 0,
-        //             extents_free: 0,
-        //         }),
-        //     };
-
-        //     // Extend the theoretical amount of extents.
-        //     let parent_sector_size = self.components.devices[parent].logical_sector_size;
-        //     let vg = self.components.vgs.get_mut(vg_entity);
-        //     let extents = (parent_sector_size * length) / vg.extent_size;
-        //     vg.extents += extents;
-        //     vg.extents_free += extents;
-
-        //     let pv = LvmPv { path: Box::from(Path::new("")), uuid: Box::from("") };
-
-        //     self.components.pvs.insert(entity, (pv, Some(vg_entity)));
-        // }
-
-        // Assign the luks components if this configures a LUKS PV
-        if let Some(luks) = luks_comps {
-            self.queued_changes.luks_params.insert(entity, luks);
+        match parent {
+            EntityVariant::Device(parent) => {
+                self.components.queued_changes.parents.insert(entity, parent);
+            }
+            EntityVariant::VolumeGroup(parent) => {
+                self.components.queued_changes.vg_parents.insert(entity, parent);
+            }
         }
 
         // Remind the manager that the creation system must be run.
@@ -123,10 +112,9 @@ impl DiskManager {
         entity: DeviceEntity,
         kind: PartitionTable,
     ) -> Result<(), Error> {
-        let disk = self.components.disks.get_mut(entity).ok_or(Error::TablesUnsupported)?;
-        disk.table = Some(kind);
+        self.components.queued_changes.tables.insert(entity, kind);
 
-        self.entities[entity] |= EntityFlags::CREATE;
+        self.entities.devices[entity] |= EntityFlags::CREATE;
         self.flags |= ManagerFlags::CREATE;
 
         // Mark this device to be wiped, and its children freed.
@@ -138,15 +126,15 @@ impl DiskManager {
     /// Checks if a partition can be inserted into the sectors of this device.
     ///
     /// Returns the sectors where this partition will be created, if it can be created.
-    fn can_create(
+    fn can_create_on_device(
         &self,
         parent: DeviceEntity,
+        device: &Device,
         start: Sector,
         end: Sector,
     ) -> Result<(u64, u64), Error> {
-        let entities = &self.entities;
-        let device = &self.components.devices[parent];
-        match self.components.children.get(parent) {
+        let entities = &self.entities.devices;
+        match self.components.devices.children.get(parent) {
             Some(children) => {
                 let offset = device.get_sector(start);
                 let end = device.get_sector(end);
@@ -163,8 +151,8 @@ impl DiskManager {
                 for &child in children {
                     let child_flags = entities[child];
                     if !child_flags.contains(EntityFlags::REMOVE) {
-                        let partdev = &self.components.devices[child];
-                        let partition = &self.components.partitions[child];
+                        let partdev = &self.components.devices.devices[child];
+                        let partition = &self.components.devices.partitions[child];
 
                         // The end of the new partition is before the start of the current.
                         let before = || end < partition.offset;
@@ -182,6 +170,15 @@ impl DiskManager {
                 Ok((offset, end - offset))
             }
             None => Err(Error::NotPartitionable),
+        }
+    }
+
+    fn can_create_on_vg(&self, parent: VgEntity, length: u64) -> Result<(), Error> {
+        let vg = &self.components.vgs.volume_groups[parent];
+        if length <= vg.sectors_free() {
+            Ok(())
+        } else {
+            Err(Error::ExceedsDevice)
         }
     }
 }

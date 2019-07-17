@@ -37,7 +37,7 @@ fn list_device_map(
             println!("{1:0$}  VG:          {2}", padding, " ", vg.name);
         }
     } else if let Some((lv, vg)) = manager.lv(entity) {
-        let vg = &manager.vg_components.volume_groups[*vg];
+        let vg = &manager.components.vgs.volume_groups[*vg];
         println!("{1:0$}  LV:          {2}", padding, " ", lv.name);
         println!("{1:0$}  LV UUID:     {2}", padding, " ", lv.uuid);
         println!("{1:0$}  VG:          {2}", padding, " ", vg.name);

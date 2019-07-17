@@ -55,6 +55,15 @@ pub struct LvmVg {
     pub extents_free: u64,
 }
 
+impl LvmVg {
+    pub fn extent_size_as_512_byte_sectors(&self) -> u64 {
+        assert!(self.extent_size % 512 == 0);
+        self.extent_size / 512
+    }
+
+    pub fn sectors_free(&self) -> u64 { self.extent_size_as_512_byte_sectors() * self.extents_free }
+}
+
 #[derive(Debug, Clone)]
 pub struct LvmLv {
     pub name: Box<str>,

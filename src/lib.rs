@@ -22,6 +22,7 @@ use std::{
 };
 
 pub use self::builder::*;
+use self::systems::DiskSystems;
 pub use disk_ops::table::PartitionError;
 pub use disk_types;
 use ops::luks::LuksParams;
@@ -35,6 +36,11 @@ new_key_type! {
 new_key_type! {
     /// A LVM volume group, which devices can be associated with, or logically created from.
     pub struct VgEntity;
+}
+
+pub enum EntityVariant {
+    Device(DeviceEntity),
+    VolumeGroup(VgEntity),
 }
 
 bitflags! {
@@ -89,23 +95,45 @@ pub enum Error {
 
 #[derive(Debug, Default)]
 pub struct DiskManager {
-    /// All of the device entities stored in the world, and their associated flags.
-    pub entities: HopSlotMap<DeviceEntity, EntityFlags>,
+    /// Entities contained within the world.
+    pub entities: DiskEntities,
 
-    /// Volume group entities are similar to, but not quite the same as a device.
-    pub vg_entities: HopSlotMap<VgEntity, EntityFlags>,
+    /// Components associated with those entities.
+    pub components: DiskComponents,
 
-    /// Components representing current data on devices.
-    pub components: DeviceComponents,
-
-    /// Components of LVM volume groups
-    pub vg_components: VgComponents,
+    /// Systems with unique state that the world excecutes.
+    systems: DiskSystems,
 
     /// Flags which control the behavior of the manager.
     flags: ManagerFlags,
+}
 
-    /// All queued modifications are stored here.
-    queued_changes: QueuedChanges,
+#[derive(Debug, Default)]
+pub struct DiskEntities {
+    /// All of the device entities stored in the world, and their associated flags.
+    pub devices: HopSlotMap<DeviceEntity, EntityFlags>,
+
+    /// Volume group entities are similar to, but not quite the same as a device.
+    pub vgs: HopSlotMap<VgEntity, EntityFlags>,
+}
+
+impl DiskEntities {
+    pub fn clear(&mut self) {
+        self.devices.clear();
+        self.vgs.clear();
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct DiskComponents {
+    /// Components representing current data on devices.
+    pub devices: DeviceComponents,
+
+    /// Components of LVM volume groups
+    pub vgs: VgComponents,
+
+    /// All queued component modifications are stored here.
+    pub(crate) queued_changes: QueuedChanges,
 }
 
 #[derive(Debug, Default)]
@@ -146,8 +174,6 @@ pub struct DeviceComponents {
     /// Information about a device if it is a LVM logical volume.
     pub lvs: SecondaryMap<DeviceEntity, (LvmLv, VgEntity)>,
 
-    /// If the device has a parent, it will be associated here.
-    /// pub parents: SecondaryMap<DeviceEntity, Vec<DeviceEntity>>,
     /// Devices with parent(s) will associate their parent device(s) here.
     pub partitions: SecondaryMap<DeviceEntity, Partition>,
 
@@ -158,25 +184,57 @@ pub struct DeviceComponents {
 /// Stores requested modificactions to an entity.
 ///
 /// This is to prevent overriding existing values which might be cancelled.
+/// It also helps to reduce logic required for making changes to the system.
 #[derive(Debug, Default)]
 struct QueuedChanges {
-    /// Secured passphrases for LUKS devices.
-    device_maps: SecondaryMap<DeviceEntity, Box<str>>,
-
-    /// Requests to change a partition's label.
-    labels: SecondaryMap<DeviceEntity, Box<str>>,
-
-    /// Options for configuring LUKS encryption
-    luks_params: SecondaryMap<DeviceEntity, LuksParams>,
+    /// A device to create.
+    pub devices: SecondaryMap<DeviceEntity, Device>,
 
     /// Secured passphrases for LUKS devices.
-    luks_passphrases: SecondaryMap<DeviceEntity, LuksPassphrase>,
+    pub device_maps: SecondaryMap<DeviceEntity, Box<str>>,
 
     /// Requests to change a partition's file system.
-    formats: SecondaryMap<DeviceEntity, FileSystem>,
+    pub formats: SecondaryMap<DeviceEntity, FileSystem>,
+
+    /// Requests to change a partition's label.
+    pub labels: SecondaryMap<DeviceEntity, Box<str>>,
+
+    /// Options for configuring LUKS encryption
+    pub luks_params: SecondaryMap<DeviceEntity, LuksParams>,
+
+    /// Secured passphrases for LUKS devices.
+    pub luks_passphrases: SecondaryMap<DeviceEntity, LuksPassphrase>,
+
+    /// Devices to be associated if they are successfully created.
+    pub parents: SecondaryMap<DeviceEntity, DeviceEntity>,
+
+    /// Devices with parent(s) will associate their parent device(s) here.
+    pub partitions: SecondaryMap<DeviceEntity, Partition>,
+
+    /// Devices to be associated with a volume group.
+    pub vg_parents: SecondaryMap<DeviceEntity, VgEntity>,
 
     /// Requests to resize a partition.
-    resize: SecondaryMap<DeviceEntity, (u64, u64)>,
+    pub resize: SecondaryMap<DeviceEntity, (u64, u64)>,
+
+    /// Tables to create
+    pub tables: SecondaryMap<DeviceEntity, PartitionTable>,
+}
+
+impl QueuedChanges {
+    pub fn pop_children_of_device(
+        parents: &mut SecondaryMap<DeviceEntity, DeviceEntity>,
+        parent: DeviceEntity,
+    ) -> impl Iterator<Item = DeviceEntity> + '_ {
+        parents.iter().filter(move |(child, cparent)| **cparent == parent).map(|(child, _)| child)
+    }
+
+    pub fn pop_children_of_vg(
+        parents: &mut SecondaryMap<DeviceEntity, VgEntity>,
+        parent: VgEntity,
+    ) -> impl Iterator<Item = DeviceEntity> + '_ {
+        parents.iter().filter(move |(child, cparent)| **cparent == parent).map(|(child, _)| child)
+    }
 }
 
 impl DiskManager {
@@ -188,8 +246,9 @@ impl DiskManager {
         self.flags = Default::default();
         let entities = &mut self.entities;
         let mut entities_to_remove: Vec<DeviceEntity> = Vec::new();
+        let mut vg_entities_to_remove: Vec<VgEntity> = Vec::new();
 
-        for (entity, flags) in entities.iter_mut() {
+        for (entity, flags) in entities.devices.iter_mut() {
             if flags.contains(EntityFlags::CREATE) {
                 entities_to_remove.push(entity);
             }
@@ -197,19 +256,40 @@ impl DiskManager {
         }
 
         entities_to_remove.into_iter().for_each(|entity| {
-            entities.remove(entity);
+            entities.devices.remove(entity);
+        });
+
+        for (entity, flags) in entities.vgs.iter_mut() {
+            if flags.contains(EntityFlags::CREATE) {
+                vg_entities_to_remove.push(entity);
+            }
+            *flags = Default::default();
+        }
+
+        vg_entities_to_remove.into_iter().for_each(|entity| {
+            entities.vgs.remove(entity);
         });
     }
 
     /// Reloads all disk information from the system.
     pub fn scan(&mut self) -> Result<(), Error> {
         self.clear();
-        systems::scan(self)
+        let &mut DiskManager { ref mut entities, ref mut components, .. } = self;
+        systems::scan(entities, components)
     }
 
     /// Apply all queued disk operations on the system.
     pub fn apply(&mut self, cancel: &Arc<AtomicBool>) -> Result<(), Error> {
-        let result = systems::run(self, cancel);
+        let result = {
+            let &mut DiskManager {
+                ref mut entities,
+                ref mut components,
+                ref mut systems,
+                ref flags,
+            } = self;
+            systems::run(entities, components, systems, flags, cancel)
+        };
+
         self.unset();
         result.map_err(Error::SystemRun)
     }

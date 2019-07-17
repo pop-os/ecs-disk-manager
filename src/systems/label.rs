@@ -9,15 +9,19 @@ pub enum Error {
     LabelWrite(#[error(cause)] PartitionError),
 }
 
-pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Error> {
-    let queued_changes = &mut world.queued_changes;
+pub fn run(
+    entities: &mut DiskEntities,
+    components: &mut DiskComponents,
+    cancel: &Arc<AtomicBool>,
+) -> Result<(), Error> {
+    let queued_changes = &mut components.queued_changes;
     let &mut DeviceComponents {
         ref mut children,
         ref mut devices,
         ref mut disks,
         ref mut partitions,
         ..
-    } = &mut world.components;
+    } = &mut components.devices;
 
     // Store changes that are queued to be applied.
     let mut changed: HashMap<DeviceEntity, Box<str>> = HashMap::new();

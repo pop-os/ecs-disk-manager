@@ -7,15 +7,18 @@ mod linux {
     use disk_types::*;
     use std::fs::read_link;
 
-    pub fn scan(world: &mut DiskManager) -> Result<(), DiskError> {
+    pub fn scan(
+        entities: &mut DiskEntities,
+        components: &mut DiskComponents,
+    ) -> Result<(), DiskError> {
         let prober = BlockProber::new().map_err(DiskError::BlockProber)?;
         for res in prober.into_iter().filter_map(Result::transpose) {
             let probed = res.map_err(DiskError::BlockProber)?;
             let info = probed.probe().map_err(DiskError::BlockProber)?;
 
-            let whole_entity = world.entities.insert(EntityFlags::empty());
+            let whole_entity = entities.devices.insert(EntityFlags::empty());
 
-            world.components.devices.insert(
+            components.devices.devices.insert(
                 whole_entity,
                 Device {
                     name:                 Box::from(info.device),
@@ -28,18 +31,21 @@ mod linux {
 
             match info.variant {
                 DeviceVariant::Loopback(backing_file) => {
-                    world.components.loopbacks.insert(whole_entity, backing_file);
+                    components.devices.loopbacks.insert(whole_entity, backing_file);
                 }
                 DeviceVariant::Map(devmapper) => {
-                    world.components.device_maps.insert(whole_entity, devmapper);
+                    components.devices.device_maps.insert(whole_entity, devmapper);
                 }
                 DeviceVariant::Physical(table) => {
-                    world.components.disks.insert(whole_entity, Disk { serial: "".into(), table });
+                    components
+                        .devices
+                        .disks
+                        .insert(whole_entity, Disk { serial: "".into(), table });
                 }
             }
 
             if let Some(fstype) = info.fstype {
-                world.components.partitions.insert(
+                components.devices.partitions.insert(
                     whole_entity,
                     Partition {
                         offset:      0,
@@ -55,10 +61,10 @@ mod linux {
 
             let mut children = Vec::new();
             for partition in info.partitions {
-                let part_entity = world.entities.insert(EntityFlags::empty());
+                let part_entity = entities.devices.insert(EntityFlags::empty());
                 children.push(part_entity);
 
-                world.components.devices.insert(
+                components.devices.devices.insert(
                     part_entity,
                     Device {
                         name:                 partition.device,
@@ -69,7 +75,7 @@ mod linux {
                     },
                 );
 
-                world.components.partitions.insert(
+                components.devices.partitions.insert(
                     part_entity,
                     Partition {
                         offset:      partition.offset,
@@ -83,21 +89,21 @@ mod linux {
                 );
             }
 
-            world.components.children.insert(whole_entity, children);
+            components.devices.children.insert(whole_entity, children);
         }
 
-        associate_children(world);
+        associate_children(entities, components);
 
-        if let Err(why) = associate_lvm_devices(world) {
+        if let Err(why) = associate_lvm_devices(entities, components) {
             eprintln!("failed to associate lvm devices: {}", why);
             eprintln!("    is the lvmdbus1 daemon installed?");
         }
 
         // Associate LUKS entities.
-        for (entity, partition) in &world.components.partitions {
+        for (entity, partition) in &components.devices.partitions {
             match partition.filesystem {
                 Some(FileSystem::Luks) => {
-                    world.components.luks.insert(entity, ());
+                    components.devices.luks.insert(entity, ());
                 }
                 _ => (),
             }
@@ -106,8 +112,8 @@ mod linux {
         Ok(())
     }
 
-    fn associate_children(world: &mut DiskManager) {
-        let &mut DeviceComponents { ref devices, ref mut children, .. } = &mut world.components;
+    fn associate_children(entities: &mut DiskEntities, components: &mut DiskComponents) {
+        let &mut DeviceComponents { ref devices, ref mut children, .. } = &mut components.devices;
 
         for (entity, device) in devices {
             for slave in slaves_iter(&device.name) {
@@ -129,13 +135,15 @@ mod linux {
         }
     }
 
-    fn associate_lvm_devices(world: &mut DiskManager) -> Result<(), DiskError> {
+    fn associate_lvm_devices(
+        entities: &mut DiskEntities,
+        components: &mut DiskComponents,
+    ) -> Result<(), DiskError> {
         let lvm_prober = LvmProber::new().map_err(DiskError::LvmProber)?;
 
-        let vg_entities = &mut world.vg_entities;
+        let vg_entities = &mut entities.vgs;
 
-        let &mut VgComponents { ref mut children, ref mut volume_groups } =
-            &mut world.vg_components;
+        let &mut VgComponents { ref mut children, ref mut volume_groups } = &mut components.vgs;
 
         let &mut DeviceComponents {
             ref device_maps,
@@ -144,7 +152,7 @@ mod linux {
             ref mut pvs,
             ref mut lvs,
             ..
-        } = &mut world.components;
+        } = &mut components.devices;
 
         let mut found_pvs = Vec::new();
 
@@ -216,6 +224,6 @@ mod linux {
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn scan(world: &mut DiskManager) -> Result<(), DiskError> {
+pub fn scan(entities: &mut DiskEntities, components: &mut DiskComponents) -> Result<(), DiskError> {
     compile_error!("Only Linux is supported at the moment");
 }

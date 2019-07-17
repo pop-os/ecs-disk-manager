@@ -10,10 +10,14 @@ pub enum Error {
     Mkfs(Box<Path>, FileSystem, #[error(cause)] io::Error),
 }
 
-pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Error> {
-    let entities = &mut world.entities;
-    let queued_changes = &mut world.queued_changes;
-    let &mut DeviceComponents { ref devices, ref mut partitions, .. } = &mut world.components;
+pub fn run(
+    entities: &mut DiskEntities,
+    components: &mut DiskComponents,
+    cancel: &Arc<AtomicBool>,
+) -> Result<(), Error> {
+    let entities = &mut entities.devices;
+    let queued_changes = &mut components.queued_changes;
+    let &mut DeviceComponents { ref devices, ref mut partitions, .. } = &mut components.devices;
 
     for entity in entities.keys() {
         if let Some(fs) = queued_changes.formats.remove(entity) {

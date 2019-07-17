@@ -17,15 +17,19 @@ pub enum Error {
     Wipefs(Box<Path>, #[error(cause)] io::Error),
 }
 
-pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Error> {
-    let entities = &mut world.entities;
+pub fn run(
+    entities: &mut DiskEntities,
+    components: &mut DiskComponents,
+    cancel: &Arc<AtomicBool>,
+) -> Result<(), Error> {
+    let entities = &mut entities.devices;
     let &mut DeviceComponents {
         ref mut children,
         ref mut devices,
         ref mut disks,
         ref mut partitions,
         ..
-    } = &mut world.components;
+    } = &mut components.devices;
 
     fn free_children(
         entities: &mut HopSlotMap<DeviceEntity, EntityFlags>,
