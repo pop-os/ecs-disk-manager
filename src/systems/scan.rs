@@ -107,7 +107,7 @@ mod linux {
     }
 
     fn associate_children(world: &mut DiskManager) {
-        let &mut DiskComponents { ref devices, ref mut children, .. } = &mut world.components;
+        let &mut DeviceComponents { ref devices, ref mut children, .. } = &mut world.components;
 
         for (entity, device) in devices {
             for slave in slaves_iter(&device.name) {
@@ -132,13 +132,17 @@ mod linux {
     fn associate_lvm_devices(world: &mut DiskManager) -> Result<(), DiskError> {
         let lvm_prober = LvmProber::new().map_err(DiskError::LvmProber)?;
 
-        let &mut DiskComponents {
+        let vg_entities = &mut world.vg_entities;
+
+        let &mut VgComponents { ref mut children, ref mut volume_groups } =
+            &mut world.vg_components;
+
+        let &mut DeviceComponents {
             ref device_maps,
             ref devices,
             ref partitions,
-            ref mut lvs,
             ref mut pvs,
-            ref mut vgs,
+            ref mut lvs,
             ..
         } = &mut world.components;
 
@@ -151,7 +155,7 @@ mod linux {
                     if pv_dm_name == dm_name.as_ref() {
                         if !found_pvs.iter().any(|&pv| pv == node) {
                             found_pvs.push(node);
-                            let device = devices.get(entity).unwrap();
+                            let device = &devices[entity];
                             eprintln!(
                                 "associating {} to {}",
                                 pv.path.display(),
@@ -168,12 +172,18 @@ mod linux {
         for vg in lvm_prober.iter_vgs() {
             let vg = vg.map_err(DiskError::LvmProber)?;
 
-            let vg_entity = vgs.insert(LvmVg {
-                name:         vg.name.clone().into(),
-                extent_size:  vg.extent_size,
-                extents:      vg.extents,
-                extents_free: vg.extents_free,
-            });
+            let vg_entity = vg_entities.insert(());
+            let mut child_devices = Vec::new();
+
+            volume_groups.insert(
+                vg_entity,
+                LvmVg {
+                    name:         vg.name.clone().into(),
+                    extent_size:  vg.extent_size,
+                    extents:      vg.extents,
+                    extents_free: vg.extents_free,
+                },
+            );
 
             for lv in vg.lvs {
                 let lv_path = read_link(&lv.path).expect("LV path is not a symlink");
@@ -181,12 +191,15 @@ mod linux {
                     if device_maps.contains_key(entity) {
                         let device = devices.get(entity).unwrap();
                         if lv_path.file_name() == device.path.file_name() {
+                            child_devices.push(entity);
                             lvs.insert(entity, (lv.clone(), vg_entity));
                             break;
                         }
                     }
                 }
             }
+
+            children.insert(vg_entity, child_devices);
 
             for (node, pv) in vg.pvs {
                 append_pv(Some(vg_entity), node, pv);

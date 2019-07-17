@@ -2,7 +2,7 @@ use crate::*;
 
 pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Error> {
     let entities = &mut world.entities;
-    let &mut DiskComponents {
+    let &mut DeviceComponents {
         ref mut children,
         ref mut devices,
         ref mut disks,
@@ -13,7 +13,6 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
         ref mut partitions,
         ref mut pvs,
         ref mut lvs,
-        ref mut vgs,
         ..
     } = &mut world.components;
 

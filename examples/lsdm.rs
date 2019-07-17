@@ -19,7 +19,7 @@ fn main() {
 
 fn list_device_map(
     manager: &DiskManager,
-    entity: Entity,
+    entity: DeviceEntity,
     device: &Device,
     dm_name: &str,
     level: usize,
@@ -30,24 +30,26 @@ fn list_device_map(
     println!("{1:0$}  Sector Size: {2}", padding, " ", device.logical_sector_size);
     println!("{1:0$}  Sectors:     {2}", padding, " ", device.sectors);
 
-    if let Some((vg, pv)) = manager.pv(entity) {
+    if let Some((pv, vg)) = manager.pv(entity) {
         println!("{1:0$}  PV:          {2}", padding, " ", pv.path.display());
         println!("{1:0$}  PV UUID:     {2}", padding, " ", pv.uuid);
         if let Some(vg) = vg {
             println!("{1:0$}  VG:          {2}", padding, " ", vg.name);
         }
-    } else if let Some((vg, lv)) = manager.lv(entity) {
+    } else if let Some((lv, vg)) = manager.lv(entity) {
+        let vg = &manager.vg_components.volume_groups[*vg];
         println!("{1:0$}  LV:          {2}", padding, " ", lv.name);
         println!("{1:0$}  LV UUID:     {2}", padding, " ", lv.uuid);
         println!("{1:0$}  VG:          {2}", padding, " ", vg.name);
     }
 
+    // Finally, check the details of the partition, if the entity is a partition.
     if let Some(partition) = manager.partition(entity) {
         list_partition(manager, entity, partition, level + 1, false);
     }
 }
 
-fn list_disk(manager: &DiskManager, entity: Entity, disk_device: &Device, disk: &Disk) {
+fn list_disk(manager: &DiskManager, entity: DeviceEntity, disk_device: &Device, disk: &Disk) {
     println!("Disk: {}", disk_device.name);
     println!("  Path:        {}", disk_device.path.display());
     println!("  Sector Size: {}", disk_device.logical_sector_size);
@@ -88,7 +90,7 @@ fn list_by_vg(manager: &DiskManager) {
 
 fn list_partition(
     manager: &DiskManager,
-    entity: Entity,
+    entity: DeviceEntity,
     partition: &Partition,
     level: usize,
     path: bool,
@@ -120,7 +122,7 @@ fn list_partition(
         println!("{1:0$}PartLabel:   {2}", padding, " ", partlabel);
     }
 
-    if let Some((vg, pv)) = manager.pv(entity) {
+    if let Some((pv, vg)) = manager.pv(entity) {
         println!("{1:0$}PV:          {2}", padding, " ", pv.path.display());
 
         if let Some(vg) = vg {

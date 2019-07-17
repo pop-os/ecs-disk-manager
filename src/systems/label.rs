@@ -11,7 +11,7 @@ pub enum Error {
 
 pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Error> {
     let queued_changes = &mut world.queued_changes;
-    let &mut DiskComponents {
+    let &mut DeviceComponents {
         ref mut children,
         ref mut devices,
         ref mut disks,
@@ -20,7 +20,7 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
     } = &mut world.components;
 
     // Store changes that are queued to be applied.
-    let mut changed: HashMap<Entity, Box<str>> = HashMap::new();
+    let mut changed: HashMap<DeviceEntity, Box<str>> = HashMap::new();
 
     for (parent_entity, children) in children.iter() {
         let parent_device = &devices[parent_entity];

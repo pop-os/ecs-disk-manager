@@ -3,19 +3,19 @@ use crate::*;
 
 impl DiskManager {
     /// Sets the label of a partition.
-    pub fn label<S: Into<Box<str>>>(&mut self, entity: Entity, label: S) {
+    pub fn label<S: Into<Box<str>>>(&mut self, entity: DeviceEntity, label: S) {
         self.queued_changes.labels.insert(entity, label.into());
         self.flags |= ManagerFlags::LABEL;
     }
 
     /// Marks the entity for removal, along with all of its children, and their children.
-    pub fn remove(&mut self, entity: Entity) {
+    pub fn remove(&mut self, entity: DeviceEntity) {
         self.entities[entity] |= Flags::REMOVE;
 
         fn recurse(
-            entities: &mut HopSlotMap<Entity, Flags>,
-            storage: &SecondaryMap<Entity, Vec<Entity>>,
-            child: Entity,
+            entities: &mut HopSlotMap<DeviceEntity, Flags>,
+            storage: &SecondaryMap<DeviceEntity, Vec<DeviceEntity>>,
+            child: DeviceEntity,
         ) {
             for &child in storage.get(child).into_iter().flatten() {
                 entities[child] |= Flags::REMOVE;

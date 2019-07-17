@@ -13,7 +13,7 @@ pub enum Error {
 pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Error> {
     let entities = &mut world.entities;
     let queued_changes = &mut world.queued_changes;
-    let &mut DiskComponents { ref devices, ref mut partitions, .. } = &mut world.components;
+    let &mut DeviceComponents { ref devices, ref mut partitions, .. } = &mut world.components;
 
     for entity in entities.keys() {
         if let Some(fs) = queued_changes.formats.remove(entity) {

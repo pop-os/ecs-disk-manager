@@ -25,10 +25,17 @@ pub use self::builder::*;
 pub use disk_ops::table::PartitionError;
 pub use disk_types;
 use ops::luks::LuksParams;
-pub use slotmap::DefaultKey as Entity;
+use slotmap::new_key_type;
 
-#[derive(Debug, Copy, Clone, Eq, Hash, PartialEq)]
-pub struct VgEntity(pub(crate) u32);
+new_key_type! {
+    /// An addressable device in the system, whether it is a physical or logical device.
+    pub struct DeviceEntity;
+}
+
+new_key_type! {
+    /// A LVM volume group, which devices can be associated with, or logically created from.
+    pub struct VgEntity;
+}
 
 bitflags! {
     pub struct Flags: u8 {
@@ -83,10 +90,16 @@ pub enum Error {
 #[derive(Debug, Default)]
 pub struct DiskManager {
     /// All of the device entities stored in the world, and their associated flags.
-    pub entities: HopSlotMap<Entity, Flags>,
+    pub entities: HopSlotMap<DeviceEntity, Flags>,
+
+    /// Volume group entities are similar to, but not quite the same as a device.
+    pub vg_entities: HopSlotMap<VgEntity, ()>,
 
     /// Components representing current data on devices.
-    pub components: DiskComponents,
+    pub components: DeviceComponents,
+
+    /// Components of LVM volume groups
+    pub vg_components: VgComponents,
 
     /// Flags which control the behavior of the manager.
     flags: ManagerFlags,
@@ -96,43 +109,48 @@ pub struct DiskManager {
 }
 
 #[derive(Debug, Default)]
-pub struct DiskComponents {
+pub struct VgComponents {
+    /// Children of the volume group entity.
+    pub children: SecondaryMap<VgEntity, Vec<DeviceEntity>>,
+
+    /// Information about the volume group.
+    pub volume_groups: SecondaryMap<VgEntity, LvmVg>,
+}
+
+#[derive(Debug, Default)]
+pub struct DeviceComponents {
     // Components for disk entities
     /// Devices that contain children will associate their children here.
-    pub children: SecondaryMap<Entity, Vec<Entity>>,
+    pub children: SecondaryMap<DeviceEntity, Vec<DeviceEntity>>,
 
     /// Every entity in the world has a device, so accesses to this should be infallable
-    pub devices: SecondaryMap<Entity, Device>,
+    pub devices: SecondaryMap<DeviceEntity, Device>,
 
     /// If a device represents a physical disk,its information is here.
-    pub disks: SecondaryMap<Entity, Disk>,
+    pub disks: SecondaryMap<DeviceEntity, Disk>,
 
     /// Device maps that were discovered in the system.
-    pub device_maps: SecondaryMap<Entity, Box<str>>,
+    pub device_maps: SecondaryMap<DeviceEntity, Box<str>>,
 
     /// Loopback devices will have a backing file associated with them.
-    pub loopbacks: SecondaryMap<Entity, Box<Path>>,
+    pub loopbacks: SecondaryMap<DeviceEntity, Box<Path>>,
 
     /// If a device is a LUKS device, its information is here.
-    pub luks: SecondaryMap<Entity, ()>,
+    pub luks: SecondaryMap<DeviceEntity, ()>,
 
     /// Secured passphrases for LUKS devices.
-    pub luks_passphrases: SecondaryMap<Entity, LuksPassphrase>,
+    pub luks_passphrases: SecondaryMap<DeviceEntity, LuksPassphrase>,
+
+    /// Information about a device if it is a LVM logical volume.
+    pub lvs: SecondaryMap<DeviceEntity, (LvmLv, VgEntity)>,
 
     /// If the device has a parent, it will be associated here.
-    /// pub parents: SecondaryMap<Entity, Vec<Entity>>,
+    /// pub parents: SecondaryMap<DeviceEntity, Vec<DeviceEntity>>,
     /// Devices with parent(s) will associate their parent device(s) here.
-    pub partitions: SecondaryMap<Entity, Partition>,
+    pub partitions: SecondaryMap<DeviceEntity, Partition>,
 
-    /// Devices which map to a LVM VG are associated here.
-    pub pvs: SecondaryMap<Entity, (LvmPv, Option<VgEntity>)>,
-
-    /// Devices which lie on LVM VGs are marked here.
-    pub lvs: SecondaryMap<Entity, (LvmLv, VgEntity)>,
-
-    // Shared storage for multiple associations
-    /// Stores LVM VG data, referenced by index.
-    pub vgs: VolumeGroupShare,
+    /// LVM devices, and their associated VG parent, is defined here.
+    pub pvs: SecondaryMap<DeviceEntity, (LvmPv, Option<VgEntity>)>,
 }
 
 /// Stores requested modificactions to an entity.
@@ -141,22 +159,22 @@ pub struct DiskComponents {
 #[derive(Debug, Default)]
 struct QueuedChanges {
     /// Secured passphrases for LUKS devices.
-    device_maps: SecondaryMap<Entity, Box<str>>,
+    device_maps: SecondaryMap<DeviceEntity, Box<str>>,
 
     /// Requests to change a partition's label.
-    labels: SecondaryMap<Entity, Box<str>>,
+    labels: SecondaryMap<DeviceEntity, Box<str>>,
 
     /// Options for configuring LUKS encryption
-    luks_params: SecondaryMap<Entity, LuksParams>,
+    luks_params: SecondaryMap<DeviceEntity, LuksParams>,
 
     /// Secured passphrases for LUKS devices.
-    luks_passphrases: SecondaryMap<Entity, LuksPassphrase>,
+    luks_passphrases: SecondaryMap<DeviceEntity, LuksPassphrase>,
 
     /// Requests to change a partition's file system.
-    formats: SecondaryMap<Entity, FileSystem>,
+    formats: SecondaryMap<DeviceEntity, FileSystem>,
 
     /// Requests to resize a partition.
-    resize: SecondaryMap<Entity, (u64, u64)>,
+    resize: SecondaryMap<DeviceEntity, (u64, u64)>,
 }
 
 impl DiskManager {
@@ -167,7 +185,7 @@ impl DiskManager {
     pub fn unset(&mut self) {
         self.flags = Default::default();
         let entities = &mut self.entities;
-        let mut entities_to_remove: Vec<Entity> = Vec::new();
+        let mut entities_to_remove: Vec<DeviceEntity> = Vec::new();
 
         for (entity, flags) in entities.iter_mut() {
             if flags.contains(Flags::CREATE) {
@@ -193,24 +211,4 @@ impl DiskManager {
         self.unset();
         result.map_err(Error::SystemRun)
     }
-}
-
-#[derive(Debug, Default)]
-pub struct VolumeGroupShare(Vec<LvmVg>);
-
-impl VolumeGroupShare {
-    pub fn clear(&mut self) { self.0.clear(); }
-
-    pub fn insert(&mut self, input: LvmVg) -> VgEntity {
-        self.0.push(input);
-        VgEntity((self.0.len() - 1) as u32)
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (VgEntity, &LvmVg)> {
-        self.0.iter().enumerate().map(|(id, entity)| (VgEntity(id as u32), entity))
-    }
-
-    pub fn get(&self, index: VgEntity) -> &LvmVg { &self.0[index.0 as usize] }
-
-    pub fn get_mut(&mut self, index: VgEntity) -> &mut LvmVg { &mut self.0[index.0 as usize] }
 }

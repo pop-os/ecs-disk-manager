@@ -32,7 +32,7 @@ pub enum Error {
 pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Error> {
     let entities = &mut world.entities;
     let queued_changes = &mut world.queued_changes;
-    let &mut DiskComponents {
+    let &mut DeviceComponents {
         ref mut children,
         ref mut devices,
         ref mut disks,

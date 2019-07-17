@@ -3,62 +3,59 @@ use crate::*;
 
 impl DiskManager {
     // If the device is a loopback, this will kdisplay the backing file.
-    pub fn backing_file(&self, entity: Entity) -> Option<&Path> {
+    pub fn backing_file(&self, entity: DeviceEntity) -> Option<&Path> {
         self.components.loopbacks.get(entity).map(AsRef::as_ref)
     }
 
     // Fetches the children of a device, for devices that have them.
-    pub fn children(&self, entity: Entity) -> Option<&[Entity]> {
+    pub fn children(&self, entity: DeviceEntity) -> Option<&[DeviceEntity]> {
         self.components.children.get(entity).map(Vec::as_slice)
     }
 
     /// Fetches a device entity by its entity ID.
-    pub fn device(&self, entity: Entity) -> &Device {
+    pub fn device(&self, entity: DeviceEntity) -> &Device {
         self.components.devices.get(entity).expect("invalid device entity; report this as a bug")
     }
 
     /// Find a device by its path.
-    pub fn device_by_path(&self, path: &Path) -> Option<(Entity, &Device)> {
+    pub fn device_by_path(&self, path: &Path) -> Option<(DeviceEntity, &Device)> {
         self.components.devices.iter().find(|(_, device)| device.path.as_ref() == path)
     }
 
     // If the device is a device map, this will return its name.
-    pub fn device_map_name(&self, entity: Entity) -> Option<&str> {
+    pub fn device_map_name(&self, entity: DeviceEntity) -> Option<&str> {
         self.components.device_maps.get(entity).map(AsRef::as_ref)
     }
 
     /// All entities are device entities in the world.
-    pub fn devices<'a>(&'a self) -> impl Iterator<Item = (Entity, &'a Device)> + 'a {
+    pub fn devices<'a>(&'a self) -> impl Iterator<Item = (DeviceEntity, &'a Device)> + 'a {
         self.components.devices.iter()
     }
 
     /// If the device is a disk, information about that disk can be retrieved here.
-    pub fn disk(&self, entity: Entity) -> Option<&Disk> { self.components.disks.get(entity) }
+    pub fn disk(&self, entity: DeviceEntity) -> Option<&Disk> { self.components.disks.get(entity) }
 
     /// Some device entities are LUKS crypto devices.
-    pub fn crypto_luks<'a>(&'a self) -> impl Iterator<Item = Entity> + 'a {
+    pub fn crypto_luks<'a>(&'a self) -> impl Iterator<Item = DeviceEntity> + 'a {
         self.components.luks.keys()
     }
 
     /// Some device entities are physical disks.
-    pub fn disks<'a>(&'a self) -> impl Iterator<Item = (Entity, &'a Disk)> + 'a {
+    pub fn disks<'a>(&'a self) -> impl Iterator<Item = (DeviceEntity, &'a Disk)> + 'a {
         self.components.disks.iter()
     }
 
     /// For LV devices which are associated with a VG.
-    pub fn lv(&self, entity: Entity) -> Option<(&LvmVg, &LvmLv)> {
-        self.components
-            .lvs
-            .get(entity)
-            .map(|(lv, vg_entity)| (self.components.vgs.get(*vg_entity), lv))
+    pub fn lv(&self, entity: DeviceEntity) -> Option<&(LvmLv, VgEntity)> {
+        self.components.lvs.get(entity)
     }
 
     /// Some device entities are logical volumes.
     pub fn lvm_logical_volumes<'a>(
         &'a self,
-    ) -> impl Iterator<Item = (Entity, &'a LvmLv, &'a LvmVg)> + 'a {
+    ) -> impl Iterator<Item = (DeviceEntity, &'a LvmLv, &'a LvmVg)> + 'a {
         self.components.lvs.iter().map(move |(id, (lvs, vgent))| {
-            let vg = self.components.vgs.get(*vgent);
+            let vg = &self.vg_components.volume_groups[*vgent];
             (id, lvs, vg)
         })
     }
@@ -66,28 +63,22 @@ impl DiskManager {
     /// Some device entities are LVM physical volumes.
     pub fn lvm_physical_volumes<'a>(
         &'a self,
-    ) -> impl Iterator<Item = (Entity, &'a LvmPv, Option<&'a LvmVg>)> + 'a {
+    ) -> impl Iterator<Item = (DeviceEntity, &'a LvmPv, Option<&'a LvmVg>)> + 'a {
         self.components.pvs.iter().map(move |(id, (pvs, vgent))| {
-            let vg = vgent.map(|vgent| self.components.vgs.get(vgent));
+            let vg = vgent.map(|vgent| &self.vg_components.volume_groups[vgent]);
             (id, pvs, vg)
         })
     }
 
     pub fn lvm_volume_group(&self, name: &str) -> Option<(VgEntity, &LvmVg)> {
-        self.components
-            .vgs
-            .0
-            .iter()
-            .enumerate()
-            .find(|(_, vg)| vg.name.as_ref() == name)
-            .map(|(id, vg)| (VgEntity(id as u32), vg))
+        self.vg_components.volume_groups.iter().find(|(_, vg)| vg.name.as_ref() == name)
     }
 
     pub fn lvm_volume_groups(&self) -> impl Iterator<Item = (VgEntity, &LvmVg)> {
-        self.components.vgs.iter()
+        self.vg_components.volume_groups.iter()
     }
 
-    pub fn lvm_pvs_of_vg(&self, entity: VgEntity) -> impl Iterator<Item = (Entity, &LvmPv)> {
+    pub fn lvm_pvs_of_vg(&self, entity: VgEntity) -> impl Iterator<Item = (DeviceEntity, &LvmPv)> {
         self.components
             .pvs
             .iter()
@@ -95,7 +86,7 @@ impl DiskManager {
             .map(move |(id, (pv, _))| (id, pv))
     }
 
-    pub fn lvm_lvs_of_vg(&self, entity: VgEntity) -> impl Iterator<Item = (Entity, &LvmLv)> {
+    pub fn lvm_lvs_of_vg(&self, entity: VgEntity) -> impl Iterator<Item = (DeviceEntity, &LvmLv)> {
         self.components
             .lvs
             .iter()
@@ -104,7 +95,7 @@ impl DiskManager {
     }
 
     /// Return the parent of this device.
-    pub fn parents<'b>(&'b self, entity: Entity) -> impl Iterator<Item = Entity> + 'b {
+    pub fn parents<'b>(&'b self, entity: DeviceEntity) -> impl Iterator<Item = DeviceEntity> + 'b {
         self.components
             .children
             .iter()
@@ -112,20 +103,20 @@ impl DiskManager {
             .map(|(pentity, _)| pentity)
     }
 
-    pub fn partition<'b>(&'b self, entity: Entity) -> Option<&'b Partition> {
+    pub fn partition<'b>(&'b self, entity: DeviceEntity) -> Option<&'b Partition> {
         self.components.partitions.get(entity)
     }
 
     /// Some device entities are partitions.
-    pub fn partitions<'a>(&'a self) -> impl Iterator<Item = (Entity, &'a Partition)> + 'a {
+    pub fn partitions<'a>(&'a self) -> impl Iterator<Item = (DeviceEntity, &'a Partition)> + 'a {
         self.components.partitions.iter()
     }
 
     /// For PVs which may be associated with a VG.
-    pub fn pv<'b>(&'b self, entity: Entity) -> Option<(Option<&'b LvmVg>, &'b LvmPv)> {
+    pub fn pv<'b>(&'b self, entity: DeviceEntity) -> Option<(&'b LvmPv, Option<&'b LvmVg>)> {
         self.components.pvs.get(entity).map(|(pv, vg_entity)| {
-            let vg = vg_entity.map(|ent| self.components.vgs.get(ent));
-            (vg, pv)
+            let vg = vg_entity.map(|ent| &self.vg_components.volume_groups[ent]);
+            (pv, vg)
         })
     }
 
@@ -134,7 +125,7 @@ impl DiskManager {
     /// # Notes
     ///
     /// If the device does not support children, `false` is returned.
-    pub fn sector_overlaps(&self, entity: Entity, sector: u64) -> bool {
+    pub fn sector_overlaps(&self, entity: DeviceEntity, sector: u64) -> bool {
         let devices = &self.components.devices;
         let partitions = &self.components.partitions;
 

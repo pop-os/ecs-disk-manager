@@ -20,11 +20,9 @@ pub enum Error {
 
 pub enum PartitionCreate {
     /// Create a simple, plain file system on the partition.
-    Plain(Box<str>, FileSystem),
+    Plain(FileSystem),
     /// Create a LUKS device, with an optional passphrase.
     Luks(LuksParams),
-    /// Create a LVM device that will extend the named LVM volume group.
-    Lvm(Box<str>),
 }
 
 impl DiskManager {
@@ -32,42 +30,26 @@ impl DiskManager {
     /// to create from that new partition.
     pub fn create(
         &mut self,
-        parent: Entity,
+        parent: DeviceEntity,
         start: Sector,
         end: Sector,
+        label: Box<str>,
         variant: PartitionCreate,
     ) -> Result<(), Error> {
         // Determine if the partition overlaps, and if not, what its offsets are.
         let (offset, length) = self.can_create(parent, start, end)?;
 
         // Followed by the partition component.
-        let mut partition = Partition { offset, ..Default::default() };
-
-        enum VgItem {
-            Existent(VgEntity),
-            NonExistent(Box<str>),
-        }
-
+        let mut partition = Partition { partlabel: Some(label), offset, ..Default::default() };
         let mut luks_comps = None;
-        let mut lvm_comps = None;
 
         match variant {
-            PartitionCreate::Plain(label, filesystem) => {
-                partition.partlabel = Some(label);
+            PartitionCreate::Plain(filesystem) => {
                 partition.filesystem = Some(filesystem);
             }
             PartitionCreate::Luks(luks) => {
                 partition.filesystem = Some(FileSystem::Luks);
                 luks_comps = Some(luks);
-            }
-            PartitionCreate::Lvm(group) => {
-                partition.filesystem = Some(FileSystem::Lvm);
-                let vg = self
-                    .lvm_volume_group(&group)
-                    .map(|(id, _)| id)
-                    .map_or_else(move || VgItem::NonExistent(group), VgItem::Existent);
-
-                lvm_comps = Some(vg);
             }
         }
 
@@ -98,31 +80,31 @@ impl DiskManager {
         // Associate the partition entity with its parent.
         self.components.children[parent].push(entity);
 
-        // Assign the lvm components if this is a logical volume.
-        if let Some(vg) = lvm_comps {
-            self.flags |= ManagerFlags::RELOAD_VGS;
+        // // Assign the lvm components if this is a logical volume.
+        // if let Some(vg) = lvm_comps {
+        //     self.flags |= ManagerFlags::RELOAD_VGS;
 
-            let vg_entity = match vg {
-                VgItem::Existent(entity) => entity,
-                VgItem::NonExistent(name) => self.components.vgs.insert(LvmVg {
-                    name,
-                    extent_size: 4 * 1024 * 1024,
-                    extents: 0,
-                    extents_free: 0,
-                }),
-            };
+        //     let vg_entity = match vg {
+        //         VgItem::Existent(entity) => entity,
+        //         VgItem::NonExistent(name) => self.components.vgs.insert(LvmVg {
+        //             name,
+        //             extent_size: 4 * 1024 * 1024,
+        //             extents: 0,
+        //             extents_free: 0,
+        //         }),
+        //     };
 
-            // Extend the theoretical amount of extents.
-            let parent_sector_size = self.components.devices[parent].logical_sector_size;
-            let vg = self.components.vgs.get_mut(vg_entity);
-            let extents = (parent_sector_size * length) / vg.extent_size;
-            vg.extents += extents;
-            vg.extents_free += extents;
+        //     // Extend the theoretical amount of extents.
+        //     let parent_sector_size = self.components.devices[parent].logical_sector_size;
+        //     let vg = self.components.vgs.get_mut(vg_entity);
+        //     let extents = (parent_sector_size * length) / vg.extent_size;
+        //     vg.extents += extents;
+        //     vg.extents_free += extents;
 
-            let pv = LvmPv { path: Box::from(Path::new("")), uuid: Box::from("") };
+        //     let pv = LvmPv { path: Box::from(Path::new("")), uuid: Box::from("") };
 
-            self.components.pvs.insert(entity, (pv, Some(vg_entity)));
-        }
+        //     self.components.pvs.insert(entity, (pv, Some(vg_entity)));
+        // }
 
         // Assign the luks components if this configures a LUKS PV
         if let Some(luks) = luks_comps {
@@ -136,7 +118,11 @@ impl DiskManager {
     }
 
     /// Define that a new partition table will be written to this device.
-    pub fn create_table(&mut self, entity: Entity, kind: PartitionTable) -> Result<(), Error> {
+    pub fn create_table(
+        &mut self,
+        entity: DeviceEntity,
+        kind: PartitionTable,
+    ) -> Result<(), Error> {
         let disk = self.components.disks.get_mut(entity).ok_or(Error::TablesUnsupported)?;
         disk.table = Some(kind);
 
@@ -152,7 +138,12 @@ impl DiskManager {
     /// Checks if a partition can be inserted into the sectors of this device.
     ///
     /// Returns the sectors where this partition will be created, if it can be created.
-    fn can_create(&self, parent: Entity, start: Sector, end: Sector) -> Result<(u64, u64), Error> {
+    fn can_create(
+        &self,
+        parent: DeviceEntity,
+        start: Sector,
+        end: Sector,
+    ) -> Result<(u64, u64), Error> {
         let entities = &self.entities;
         let device = &self.components.devices[parent];
         match self.components.children.get(parent) {

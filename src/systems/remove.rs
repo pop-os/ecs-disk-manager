@@ -19,7 +19,7 @@ pub enum Error {
 
 pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Error> {
     let entities = &mut world.entities;
-    let &mut DiskComponents {
+    let &mut DeviceComponents {
         ref mut children,
         ref mut devices,
         ref mut disks,
@@ -28,9 +28,9 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
     } = &mut world.components;
 
     fn free_children(
-        entities: &mut HopSlotMap<Entity, Flags>,
-        storage: &mut SecondaryMap<Entity, Vec<Entity>>,
-        parent: Entity,
+        entities: &mut HopSlotMap<DeviceEntity, Flags>,
+        storage: &mut SecondaryMap<DeviceEntity, Vec<DeviceEntity>>,
+        parent: DeviceEntity,
     ) {
         let mut freed = Vec::new();
         if let Some(mut children) = storage.remove(parent) {
@@ -59,7 +59,7 @@ pub fn run(world: &mut DiskManager, cancel: &Arc<AtomicBool>) -> Result<(), Erro
                 .into_iter()
                 .cloned()
                 .filter(|&entity| entities[entity].contains(Flags::REMOVE))
-                .collect::<Vec<Entity>>();
+                .collect::<Vec<DeviceEntity>>();
 
             if !free.is_empty() {
                 partitions_to_free.insert(disk_entity, free);
