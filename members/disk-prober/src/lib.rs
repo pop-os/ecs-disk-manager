@@ -39,10 +39,11 @@ impl LvmProber {
         &'a self,
     ) -> impl Iterator<Item = Result<(u32, LvmPv), LvmProbeError>> + 'a {
         self.physical_volumes.iter().map(|pv| {
-            let path = pv.name()?;
-            let uuid = pv.uuid()?;
+            let path = PathBuf::from(pv.name()?).into();
+            let uuid = pv.uuid()?.into();
+            let size_bytes = pv.size_bytes()?;
 
-            Ok((pv.node, LvmPv { path: PathBuf::from(path).into(), uuid: uuid.into() }))
+            Ok((pv.node, LvmPv { path, uuid, size_bytes }))
         })
     }
 
@@ -59,10 +60,11 @@ impl LvmProber {
                         let conn = PvConn::new()?;
                         let pv = conn.connect_with_path(path);
 
-                        let path = pv.name()?;
-                        let uuid = pv.uuid()?;
+                        let path = PathBuf::from(pv.name()?).into();
+                        let uuid = pv.uuid()?.into();
+                        let size_bytes = pv.size_bytes()?;
 
-                        Ok((pv.node, LvmPv { path: PathBuf::from(path).into(), uuid: uuid.into() }))
+                        Ok((pv.node, LvmPv { path, uuid, size_bytes }))
                     })
                     .collect::<Result<_, lvmdbus1::Error>>()?,
                 lvs:          vg

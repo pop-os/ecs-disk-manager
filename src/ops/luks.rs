@@ -2,6 +2,7 @@
 
 // TODO: Use the cryptsetup bindings instead of the cryptsetup binary.
 
+use crate::{DeviceEntity, DiskManager};
 use disk_types::LuksPassphrase;
 use secstr::SecStr;
 use std::{
@@ -10,6 +11,15 @@ use std::{
     process::{Command, ExitStatus, Stdio},
 };
 
+impl DiskManager {
+    /// Clears all remembered LUKS encryption passphrases.
+    pub fn forget_encryption_keys(&mut self) {
+        for key in self.components.devices.luks.values_mut() {
+            *key = None;
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 #[error(display = "failed to execute cryptsetup command")]
 pub struct Error(#[error(cause)] CommandError);
@@ -17,7 +27,7 @@ pub struct Error(#[error(cause)] CommandError);
 #[derive(Debug, Error)]
 pub enum CommandError {
     #[error(display = "command exited with failure status: {}", 0)]
-    ExitStatis(ExitStatus),
+    ExitStatus(ExitStatus),
     #[error(display = "failed to write to the stdin of the child process")]
     StdinWrite(#[error(cause)] io::Error),
     #[error(display = "failed to spawn child process")]
@@ -28,34 +38,34 @@ pub enum CommandError {
 
 #[derive(Debug)]
 pub struct LuksParams {
-    pub key_size:    u64,
+    pub key_size:    u16,
     pub kind:        Box<str>,
     pub target_name: Box<str>,
     pub passphrase:  Option<LuksPassphrase>,
 }
 
-pub fn format(
-    device: &Path,
-    luks_params: &LuksParams,
-    passphrase: Option<&LuksPassphrase>,
-) -> Result<(), Error> {
+pub fn format(device: &Path, luks_params: &LuksParams) -> Result<(), Error> {
     let key_size = format!("{}", luks_params.key_size);
     exec(
         Command::new("cryptsetup")
             .args(&["-s", &key_size, "luksFormat", "--type", &luks_params.kind])
             .arg(device),
-        passphrase,
+        luks_params.passphrase.as_ref(),
     )
     .map_err(Error)
 }
 
-pub fn open(
+pub fn activate(
     device: &Path,
     device_map: &str,
     passphrase: Option<&LuksPassphrase>,
 ) -> Result<(), Error> {
     exec(Command::new("cryptsetup").arg("open").arg(device).arg(device_map), passphrase)
         .map_err(Error)
+}
+
+pub fn deactivate(device: &Path) -> Result<(), Error> {
+    exec(Command::new("cryptsetup").arg("close").arg(device), None).map_err(Error)
 }
 
 fn exec(cmd: &mut Command, passphrase: Option<&LuksPassphrase>) -> Result<(), CommandError> {
@@ -66,7 +76,7 @@ fn exec(cmd: &mut Command, passphrase: Option<&LuksPassphrase>) -> Result<(), Co
         .map_err(CommandError::Spawn)?;
 
     if let Some(passphrase) = passphrase {
-        let appended = append_newline(passphrase);
+        let appended = append_newline(passphrase.as_ref());
         child
             .stdin
             .as_mut()
@@ -80,7 +90,7 @@ fn exec(cmd: &mut Command, passphrase: Option<&LuksPassphrase>) -> Result<(), Co
     if status.success() {
         Ok(())
     } else {
-        Err(CommandError::ExitStatis(status))
+        Err(CommandError::ExitStatus(status))
     }
 }
 

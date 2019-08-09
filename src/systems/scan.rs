@@ -16,7 +16,7 @@ mod linux {
             let probed = res.map_err(DiskError::BlockProber)?;
             let info = probed.probe().map_err(DiskError::BlockProber)?;
 
-            let whole_entity = entities.devices.insert(EntityFlags::empty());
+            let whole_entity = entities.devices.insert(EntityFlags::SUPPORTS_TABLE);
 
             components.devices.devices.insert(
                 whole_entity,
@@ -36,12 +36,13 @@ mod linux {
                 DeviceVariant::Map(devmapper) => {
                     components.devices.device_maps.insert(whole_entity, devmapper);
                 }
-                DeviceVariant::Physical(table) => {
-                    components
-                        .devices
-                        .disks
-                        .insert(whole_entity, Disk { serial: "".into(), table });
+                DeviceVariant::Physical => {
+                    components.devices.disks.insert(whole_entity, Disk { serial: "".into() });
                 }
+            }
+
+            if let Some(table) = info.table {
+                components.devices.tables.insert(whole_entity, table);
             }
 
             if let Some(fstype) = info.fstype {
@@ -92,7 +93,7 @@ mod linux {
             components.devices.children.insert(whole_entity, children);
         }
 
-        associate_children(entities, components);
+        associate_children(components);
 
         if let Err(why) = associate_lvm_devices(entities, components) {
             eprintln!("failed to associate lvm devices: {}", why);
@@ -103,7 +104,7 @@ mod linux {
         for (entity, partition) in &components.devices.partitions {
             match partition.filesystem {
                 Some(FileSystem::Luks) => {
-                    components.devices.luks.insert(entity, ());
+                    components.devices.luks.insert(entity, None);
                 }
                 _ => (),
             }
@@ -112,7 +113,7 @@ mod linux {
         Ok(())
     }
 
-    fn associate_children(entities: &mut DiskEntities, components: &mut DiskComponents) {
+    fn associate_children(components: &mut DiskComponents) {
         let &mut DeviceComponents { ref devices, ref mut children, .. } = &mut components.devices;
 
         for (entity, device) in devices {

@@ -1,4 +1,6 @@
 /target
 **/*.rs.bk
 Cargo.lock
+.idea
 .vscode
+src/tests/loopback.bin

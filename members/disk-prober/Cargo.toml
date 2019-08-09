@@ -3,6 +3,7 @@ name = "disk-prober"
 version = "0.1.0"
 authors = ["Michael Aaron Murphy <mmstick@pm.me>"]
 edition = "2018"
+description = "Gathers information about devices in the system"
 
 [dependencies]
 blkid = { git = "https://github.com/pop-os/blkid" }

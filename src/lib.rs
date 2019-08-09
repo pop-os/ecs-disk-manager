@@ -5,7 +5,6 @@ extern crate err_derive;
 #[macro_use]
 extern crate shrinkwraprs;
 
-mod builder;
 pub mod ops;
 mod systems;
 
@@ -15,18 +14,21 @@ use disk_prober::{
 use disk_types::*;
 use slotmap::*;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io,
     path::Path,
     sync::{atomic::AtomicBool, Arc},
 };
 
-pub use self::builder::*;
 use self::systems::DiskSystems;
 pub use disk_ops::table::PartitionError;
 pub use disk_types;
 use ops::luks::LuksParams;
 use slotmap::new_key_type;
+
+// TODO: Activate LUKS devices and scan their newly-opened device maps.
+// TODO: Support the creation of loopback devices.
+// TODO: Fetch active mount points of discovered devices.
 
 new_key_type! {
     /// An addressable device in the system, whether it is a physical or logical device.
@@ -38,17 +40,24 @@ new_key_type! {
     pub struct VgEntity;
 }
 
-pub enum EntityVariant {
-    Device(DeviceEntity),
-    VolumeGroup(VgEntity),
-}
-
 bitflags! {
     pub struct EntityFlags: u8 {
-        /// Create a partition or table.
+        /// Marks a device for creating when disk operations are applied.
         const CREATE = 1 << 0;
-        /// Removes a partition or table.
+
+        /// Marks a device for removal when disk operations are applied.
         const REMOVE = 1 << 1;
+
+        ///
+        const CREATE_CHILDREN = 1 << 2;
+
+        /// Devices which support partition tables being created on them.
+        ///
+        /// Physical disks, DM RAID, and loopback devices support tables.
+        const SUPPORTS_TABLE = 1 << 6;
+
+        /// A device which is a child of a LUKS-encrypted partition.
+        const LUKS_CHILD = 1 << 7;
     }
 }
 
@@ -81,16 +90,10 @@ impl Default for ManagerFlags {
 pub enum Error {
     #[error(display = "block device probing failed")]
     BlockProber(#[error(cause)] BlockProbeError),
-    #[error(display = "device has unknown file system ({})", _0)]
-    UnknownFS(Box<str>),
     #[error(display = "lvm device probing failed")]
     LvmProber(#[error(cause)] LvmProbeError),
-    #[error(display = "failed to read GUID table from {:?}", _0)]
-    NotGuid(Box<Path>, #[error(cause)] PartitionError),
     #[error(display = "system execution failed")]
     SystemRun(#[error(cause)] systems::Error),
-    #[error(display = "failed to add partition to device")]
-    PartitionAdd(#[error(cause)] ops::create::Error),
 }
 
 #[derive(Debug, Default)]
@@ -133,7 +136,7 @@ pub struct DiskComponents {
     pub vgs: VgComponents,
 
     /// All queued component modifications are stored here.
-    pub(crate) queued_changes: QueuedChanges,
+    pub queued_changes: QueuedChanges,
 }
 
 #[derive(Debug, Default)]
@@ -147,38 +150,41 @@ pub struct VgComponents {
 
 #[derive(Debug, Default)]
 pub struct DeviceComponents {
-    // Components for disk entities
     /// Devices that contain children will associate their children here.
+    ///
+    /// This applies to devices formatted with LVM, LUKS, or that have partition tables.
     pub children: SecondaryMap<DeviceEntity, Vec<DeviceEntity>>,
 
-    /// Every entity in the world has a device, so accesses to this should be infallable
+    /// Every entity in the world has a device, so accesses to this should be infallible.
     pub devices: SecondaryMap<DeviceEntity, Device>,
 
-    /// If a device represents a physical disk,its information is here.
+    /// If a device represents a physical disk, its information is here.
     pub disks: SecondaryMap<DeviceEntity, Disk>,
 
-    /// Device maps that were discovered in the system.
+    /// Devices which exist as device maps
     pub device_maps: SecondaryMap<DeviceEntity, Box<str>>,
 
-    /// Loopback devices will have a backing file associated with them.
-    pub loopbacks: SecondaryMap<DeviceEntity, Box<Path>>,
+    /// Devices which are loopbacks, and their backing file.
+    pub loopbacks: SparseSecondaryMap<DeviceEntity, Box<Path>>,
 
-    /// If a device is a LUKS device, its information is here.
-    pub luks: SecondaryMap<DeviceEntity, ()>,
+    /// Devices which are encrypted with LUKS
+    pub luks: SparseSecondaryMap<DeviceEntity, Option<LuksPassphrase>>,
 
-    /// Secured passphrases for LUKS devices.
+    /// Devices which are logical volumes of a volume group.
+    pub lvs: SparseSecondaryMap<DeviceEntity, (LvmLv, VgEntity)>,
+
+    /// File systems associated with some devices
     ///
-    /// Passphrases are secured via [secstr](https://docs.rs/secstr).
-    pub luks_passphrases: SecondaryMap<DeviceEntity, LuksPassphrase>,
+    /// These may be disks, partitions, logical volumes, device maps, or loopback devices.
+    pub partitions: SparseSecondaryMap<DeviceEntity, Partition>,
 
-    /// Information about a device if it is a LVM logical volume.
-    pub lvs: SecondaryMap<DeviceEntity, (LvmLv, VgEntity)>,
+    /// Partitions formatted as LVM PVs, which may be assigned to a VG
+    pub pvs: SparseSecondaryMap<DeviceEntity, (LvmPv, Option<VgEntity>)>,
 
-    /// Devices with parent(s) will associate their parent device(s) here.
-    pub partitions: SecondaryMap<DeviceEntity, Partition>,
-
-    /// LVM devices, and their associated VG parent, is defined here.
-    pub pvs: SecondaryMap<DeviceEntity, (LvmPv, Option<VgEntity>)>,
+    /// Partition tables associated with devices.
+    ///
+    /// Disk and loopback devices may optionally have these.
+    pub tables: SparseSecondaryMap<DeviceEntity, PartitionTable>,
 }
 
 /// Stores requested modificactions to an entity.
@@ -186,54 +192,81 @@ pub struct DeviceComponents {
 /// This is to prevent overriding existing values which might be cancelled.
 /// It also helps to reduce logic required for making changes to the system.
 #[derive(Debug, Default)]
-struct QueuedChanges {
+pub struct QueuedChanges {
     /// A device to create.
-    pub devices: SecondaryMap<DeviceEntity, Device>,
+    pub devices: SparseSecondaryMap<DeviceEntity, Device>,
 
     /// Secured passphrases for LUKS devices.
-    pub device_maps: SecondaryMap<DeviceEntity, Box<str>>,
+    pub device_maps: SparseSecondaryMap<DeviceEntity, Box<str>>,
 
     /// Requests to change a partition's file system.
-    pub formats: SecondaryMap<DeviceEntity, FileSystem>,
+    pub formats: SparseSecondaryMap<DeviceEntity, FileSystem>,
 
     /// Requests to change a partition's label.
-    pub labels: SecondaryMap<DeviceEntity, Box<str>>,
+    pub labels: SparseSecondaryMap<DeviceEntity, Box<str>>,
 
     /// Options for configuring LUKS encryption
-    pub luks_params: SecondaryMap<DeviceEntity, LuksParams>,
+    pub luks: SparseSecondaryMap<DeviceEntity, (DeviceEntity, LuksParams)>,
 
-    /// Secured passphrases for LUKS devices.
-    pub luks_passphrases: SecondaryMap<DeviceEntity, LuksPassphrase>,
+    /// Information about a device if it is a LVM logical volume.
+    pub lvs: SparseSecondaryMap<DeviceEntity, (LvmLv, VgEntity)>,
 
     /// Devices to be associated if they are successfully created.
-    pub parents: SecondaryMap<DeviceEntity, DeviceEntity>,
+    pub parents: SparseSecondaryMap<DeviceEntity, DeviceEntity>,
 
     /// Devices with parent(s) will associate their parent device(s) here.
-    pub partitions: SecondaryMap<DeviceEntity, Partition>,
+    pub partitions: SparseSecondaryMap<DeviceEntity, Partition>,
+
+    /// LVM PVs to associate with volume groups.
+    pub pv_parents: SparseSecondaryMap<DeviceEntity, VgEntity>,
+
+    /// LVM devices to be optionally-associated to a volume group
+    pub pvs: SparseSecondaryMap<DeviceEntity, (LvmPv, Option<VgEntity>)>,
+
+    /// Volume groups that are to be created, or modified.
+    pub volume_groups: SparseSecondaryMap<VgEntity, LvmVg>,
 
     /// Devices to be associated with a volume group.
-    pub vg_parents: SecondaryMap<DeviceEntity, VgEntity>,
+    pub vg_parents: SparseSecondaryMap<DeviceEntity, VgEntity>,
 
     /// Requests to resize a partition.
-    pub resize: SecondaryMap<DeviceEntity, (u64, u64)>,
+    pub resize: SparseSecondaryMap<DeviceEntity, (u64, u64)>,
 
     /// Tables to create
-    pub tables: SecondaryMap<DeviceEntity, PartitionTable>,
+    pub tables: SparseSecondaryMap<DeviceEntity, PartitionTable>,
 }
 
 impl QueuedChanges {
-    pub fn pop_children_of_device(
-        parents: &mut SecondaryMap<DeviceEntity, DeviceEntity>,
-        parent: DeviceEntity,
-    ) -> impl Iterator<Item = DeviceEntity> + '_ {
-        parents.iter().filter(move |(child, cparent)| **cparent == parent).map(|(child, _)| child)
+    pub fn clear(&mut self) {
+        self.devices.clear();
+        self.device_maps.clear();
+        self.formats.clear();
+        self.labels.clear();
+        self.luks.clear();
+        self.parents.clear();
+        self.partitions.clear();
+        self.volume_groups.clear();
+        self.vg_parents.clear();
+        self.resize.clear();
+        self.tables.clear();
     }
 
-    pub fn pop_children_of_vg(
-        parents: &mut SecondaryMap<DeviceEntity, VgEntity>,
-        parent: VgEntity,
+    /// Removes all entity keys which are associated with a given parent entity.
+    pub fn pop_children_of<T: PartialEq>(
+        parents: &mut SparseSecondaryMap<DeviceEntity, T>,
+        parent: T,
     ) -> impl Iterator<Item = DeviceEntity> + '_ {
-        parents.iter().filter(move |(child, cparent)| **cparent == parent).map(|(child, _)| child)
+        let taker = std::iter::repeat_with(move || {
+            match parents.iter().find(|(_, cparent)| **cparent == parent) {
+                Some((child, _)) => {
+                    parents.remove(child);
+                    Some(child)
+                }
+                None => None,
+            }
+        });
+
+        taker.take_while(Option::is_some).map(Option::unwrap)
     }
 }
 
@@ -241,12 +274,35 @@ impl DiskManager {
     /// Drops all recorded entities and their components.
     pub fn clear(&mut self) { self.entities.clear(); }
 
+    pub fn is_disk(&self, entity: DeviceEntity) -> bool {
+        self.components.devices.disks.contains_key(entity)
+    }
+
+    pub fn is_partition(&self, entity: DeviceEntity) -> bool {
+        self.components.devices.partitions.contains_key(entity)
+    }
+
+    pub fn is_luks(&self, entity: DeviceEntity) -> bool {
+        self.components.devices.luks.contains_key(entity)
+    }
+
+    pub fn is_lvm_lv(&self, entity: DeviceEntity) -> bool {
+        self.components.devices.lvs.contains_key(entity)
+    }
+
+    pub fn is_lvm_pv(&self, entity: DeviceEntity) -> bool {
+        self.components.devices.pvs.contains_key(entity)
+    }
+
     /// Unsets any operations that have been queued.
     pub fn unset(&mut self) {
+        self.components.queued_changes.clear();
         self.flags = Default::default();
-        let entities = &mut self.entities;
+
         let mut entities_to_remove: Vec<DeviceEntity> = Vec::new();
         let mut vg_entities_to_remove: Vec<VgEntity> = Vec::new();
+
+        let entities = &mut self.entities;
 
         for (entity, flags) in entities.devices.iter_mut() {
             if flags.contains(EntityFlags::CREATE) {
@@ -294,3 +350,6 @@ impl DiskManager {
         result.map_err(Error::SystemRun)
     }
 }
+
+#[cfg(test)]
+mod tests;

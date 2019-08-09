@@ -3,17 +3,13 @@ use disk_types::*;
 use std::path::Path;
 
 pub fn open_partitioner<E>(
-    disk: &Disk,
+    table: PartitionTable,
     path: &Path,
     mut partitioner_func: impl FnMut(
         Result<&mut dyn Partitioner, PartitionError>,
         PartitionTable,
     ) -> Result<(), E>,
 ) -> Result<(), E> {
-    let table = disk
-        .table
-        .expect("attempted to open a partition table for a device which did not have one");
-
     // Temporary variables for storing could-be table values.
     let mut gpt: Gpt;
 

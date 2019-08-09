@@ -51,3 +51,7 @@ impl<'a> LvmPath<'a> for PvPath<'a> {
 
     fn from_path(conn: ConnPath<'a, &'a Connection>, node: u32) -> Self { Self { conn, node } }
 }
+
+impl<'a> PvPath<'a> {
+    pub fn size_bytes(&self) -> Result<u64, Error> { self.get("SizeBytes") }
+}

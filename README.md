@@ -18,6 +18,8 @@ The `DiskManager` structure, referred to as the "world", contains three inner cr
 
 To source information about block devices, devices on the system are sourced from `/proc/partitions`, and then probed using bindings for `libblkid`, and supplemented with additional information from the kernel's `/sys/class/block` file system. LVM support is offered through the `lvmdbus1` DBus API. LUKS support is provided by bindings to `libcryptsetup`. These are all part of the scanning system.
 
+> Although currently Linux-specific, it is possible to add support for other operating systems.
+
 ### Entities and Components
 
 There are currently two types of entities in the world that may be encountered: **devices** and **volume groups**. Devices are any addressable device in the system, such as loopbacks, disks, partitions, and logical volumes. Volume groups are not directly addressable to the system; but have LVM physical volumes associated with them; and when activated, provide logical volumes as addressable devices in the system.

@@ -163,7 +163,7 @@ impl<'a> Probed<'a> {
             backing.pop();
             DeviceVariant::Loopback(PathBuf::from(backing).into())
         } else {
-            DeviceVariant::Physical(table)
+            DeviceVariant::Physical
         };
 
         Ok(ProbeInfo {
@@ -180,6 +180,7 @@ impl<'a> Probed<'a> {
             fstype,
             uuid,
             partitions,
+            table,
         })
     }
 }
@@ -198,6 +199,7 @@ pub struct ProbeInfo<'a, 'b> {
     pub fstype:               Option<Box<str>>,
     pub uuid:                 Option<Box<str>>,
     pub variant:              DeviceVariant,
+    pub table:                Option<PartitionTable>,
 }
 
 pub struct ProbePartInfo {
@@ -216,5 +218,5 @@ pub struct ProbePartInfo {
 pub enum DeviceVariant {
     Loopback(Box<Path>),
     Map(Box<str>),
-    Physical(Option<PartitionTable>),
+    Physical,
 }

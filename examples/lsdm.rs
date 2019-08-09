@@ -9,8 +9,8 @@ fn main() {
     }
 
     for (entity, device) in manager.devices() {
-        if let Some(disk) = manager.disk(entity) {
-            list_disk(&manager, entity, device, disk);
+        if manager.is_disk(entity) {
+            list_disk(&manager, entity, device);
         }
     }
 
@@ -26,21 +26,22 @@ fn list_device_map(
 ) {
     let padding = level * 2;
     println!("{1:0$}Device Map: {2}", padding, " ", dm_name);
-    println!("{1:0$}  Path:        {2}", padding, " ", device.path.display());
-    println!("{1:0$}  Sector Size: {2}", padding, " ", device.logical_sector_size);
-    println!("{1:0$}  Sectors:     {2}", padding, " ", device.sectors);
+    println!("{1:0$}  Path:         {2}", padding, " ", device.path.display());
+    println!("{1:0$}  Sector Size:  {2}", padding, " ", device.logical_sector_size);
+    println!("{1:0$}  Sectors:      {2}", padding, " ", device.sectors);
 
     if let Some((pv, vg)) = manager.pv(entity) {
-        println!("{1:0$}  PV:          {2}", padding, " ", pv.path.display());
-        println!("{1:0$}  PV UUID:     {2}", padding, " ", pv.uuid);
+        println!("{1:0$}  PV:           {2}", padding, " ", pv.path.display());
+        println!("{1:0$}  PV UUID:      {2}", padding, " ", pv.uuid);
+        println!("{1:0$}  PV SizeBytes: {2}", padding, " ", pv.size_bytes);
         if let Some(vg) = vg {
             println!("{1:0$}  VG:          {2}", padding, " ", vg.name);
         }
     } else if let Some((lv, vg)) = manager.lv(entity) {
         let vg = &manager.components.vgs.volume_groups[*vg];
-        println!("{1:0$}  LV:          {2}", padding, " ", lv.name);
-        println!("{1:0$}  LV UUID:     {2}", padding, " ", lv.uuid);
-        println!("{1:0$}  VG:          {2}", padding, " ", vg.name);
+        println!("{1:0$}  LV:           {2}", padding, " ", lv.name);
+        println!("{1:0$}  LV UUID:      {2}", padding, " ", lv.uuid);
+        println!("{1:0$}  VG:           {2}", padding, " ", vg.name);
     }
 
     // Finally, check the details of the partition, if the entity is a partition.
@@ -49,7 +50,7 @@ fn list_device_map(
     }
 }
 
-fn list_disk(manager: &DiskManager, entity: DeviceEntity, disk_device: &Device, disk: &Disk) {
+fn list_disk(manager: &DiskManager, entity: DeviceEntity, disk_device: &Device) {
     println!("Disk: {}", disk_device.name);
     println!("  Path:        {}", disk_device.path.display());
     println!("  Sector Size: {}", disk_device.logical_sector_size);
@@ -57,8 +58,8 @@ fn list_disk(manager: &DiskManager, entity: DeviceEntity, disk_device: &Device, 
     match manager.partition(entity) {
         Some(partition) => list_partition(manager, entity, partition, 1, false),
         None => {
-            if let Some(table) = disk.table {
-                println!("  Table:       {}", <&'static str>::from(table));
+            if let Some(table) = manager.components.devices.tables.get(entity) {
+                println!("  Table:       {}", <&'static str>::from(*table));
                 if let Some(children) = manager.children(entity) {
                     for &child in children {
                         let child_device = manager.device(child);
