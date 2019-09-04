@@ -17,7 +17,13 @@ fn main() {
     list_by_vg(&manager);
 }
 
-fn list_device_map(manager: &DiskManager, entity: Entity, device: &Device, dm_name: &str, level: usize) {
+fn list_device_map(
+    manager: &DiskManager,
+    entity: Entity,
+    device: &Device,
+    dm_name: &str,
+    level: usize,
+) {
     let padding = level * 2;
     println!("{1:0$}Device Map: {2}", padding, " ", dm_name);
     println!("{1:0$}  Path:        {2}", padding, " ", device.path.display());
@@ -80,7 +86,13 @@ fn list_by_vg(manager: &DiskManager) {
     }
 }
 
-fn list_partition(manager: &DiskManager, entity: Entity, partition: &Partition, level: usize, path: bool) {
+fn list_partition(
+    manager: &DiskManager,
+    entity: Entity,
+    partition: &Partition,
+    level: usize,
+    path: bool,
+) {
     let padding = level * 2;
     let device = manager.device(entity);
 
@@ -120,7 +132,6 @@ fn list_partition(manager: &DiskManager, entity: Entity, partition: &Partition, 
         let parent = manager.device(parent);
         println!("{1:0$}Parent:      {2}", padding, " ", parent.path.display());
     }
-
 
     for &child in manager.children(entity).into_iter().flatten() {
         let device = manager.device(child);

@@ -1,9 +1,7 @@
 extern crate disk_ops;
+use disk_ops::table::{PartitionResult, Partitioner};
 use disk_types::{FileSystem, PartitionTable};
-use std::path::Path;
-use disk_ops::table::{Partitioner, PartitionResult};
-use std::io;
-use std::error::Error;
+use std::{error::Error, io, path::Path};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let path = Path::new("/dev/sdb");
@@ -18,15 +16,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     table.write()?;
 
-    disk_ops::partition::create(
-        Path::new(&format!("/dev/sdb{}", efi)),
-        FileSystem::Vfat
-    )?;
+    disk_ops::partition::create(Path::new(&format!("/dev/sdb{}", efi)), FileSystem::Vfat)?;
 
-    disk_ops::partition::create(
-        Path::new(&format!("/dev/sdb{}", root)),
-        FileSystem::Btrfs
-    )?;
+    disk_ops::partition::create(Path::new(&format!("/dev/sdb{}", root)), FileSystem::Btrfs)?;
 
     table = disk_ops::table::Gpt::open(path)?;
     table.remove(1024001)?;
@@ -35,10 +27,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     table.write()?;
 
-    disk_ops::partition::create(
-        Path::new(&format!("/dev/sdb{}", home)),
-        FileSystem::Btrfs
-    )?;
+    disk_ops::partition::create(Path::new(&format!("/dev/sdb{}", home)), FileSystem::Btrfs)?;
 
     Ok(())
 }

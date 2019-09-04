@@ -1,5 +1,8 @@
-use crate::{Daemon, dbus_helper::DbusFactory};
-use dbus::{self, tree::{MTFn, Method}};
+use crate::{dbus_helper::DbusFactory, Daemon};
+use dbus::{
+    self,
+    tree::{MTFn, Method},
+};
 use ecs_disk_manager_dbus::methods;
 use std::{cell::RefCell, rc::Rc};
 
@@ -15,10 +18,7 @@ pub fn scan(daemon: Rc<RefCell<Daemon>>, dbus_factory: &DbusFactory) -> Method<M
 pub fn entities(daemon: Rc<RefCell<Daemon>>, dbus_factory: &DbusFactory) -> Method<MTFn<()>, ()> {
     let method = dbus_factory.method(methods::SCAN, move |message| {
         let mut daemon = daemon.borrow_mut();
-        daemon.manager
-            .entities
-            .iter()
-            .collect::<Vec<(Entity, Flags)>>();
+        daemon.manager.entities.iter().collect::<Vec<(Entity, Flags)>>();
         Ok(())
     });
 

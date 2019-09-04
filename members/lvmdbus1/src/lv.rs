@@ -38,42 +38,28 @@ impl<'a> LvmConn<'a> for LvConn {
     const DEST: &'static str = "com.redhat.lvmdbus1";
     const OBJECT: &'static str = "/com/redhat/lvmdbus1/Vg";
 
-    fn conn(&self) -> &Connection {
-        &self.conn
-    }
+    fn conn(&self) -> &Connection { &self.conn }
 }
 
 pub struct LvPath<'a> {
-    conn: ConnPath<'a, &'a Connection>,
+    conn:     ConnPath<'a, &'a Connection>,
     pub node: u32,
 }
 
 impl<'a> LvPath<'a> {
-    pub fn path(&self) -> Result<PathBuf, Error> {
-        self.get::<String>("Path").map(PathBuf::from)
-    }
+    pub fn path(&self) -> Result<PathBuf, Error> { self.get::<String>("Path").map(PathBuf::from) }
 
-    pub fn size_bytes(&self) -> Result<u64, Error> {
-        self.get("SizeBytes")
-    }
+    pub fn size_bytes(&self) -> Result<u64, Error> { self.get("SizeBytes") }
 
-    pub fn vg(&self) -> Result<dbus::Path, Error> {
-        self.get("Vg")
-    }
+    pub fn vg(&self) -> Result<dbus::Path, Error> { self.get("Vg") }
 }
 
 impl<'a> LvmPath<'a> for LvPath<'a> {
     const PATH: &'static str = "com.redhat.lvmdbus1.Lv";
 
-    fn conn<'b>(&'b self) -> &'b ConnPath<'a, &'a Connection> {
-        &self.conn
-    }
+    fn conn<'b>(&'b self) -> &'b ConnPath<'a, &'a Connection> { &self.conn }
 
-    fn id(&self) -> u32 {
-        self.node
-    }
+    fn id(&self) -> u32 { self.node }
 
-    fn from_path(conn: ConnPath<'a, &'a Connection>, node: u32) -> Self {
-        Self { conn, node }
-    }
+    fn from_path(conn: ConnPath<'a, &'a Connection>, node: u32) -> Self { Self { conn, node } }
 }

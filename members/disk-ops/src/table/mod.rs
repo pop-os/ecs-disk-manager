@@ -3,9 +3,13 @@ mod gpt;
 pub use self::gpt::*;
 
 use disk_types::PartitionTable;
-use std::{fs::{File, OpenOptions}, io::{self, Seek, SeekFrom}, path::Path};
-use gptman::{GPT, GPTPartitionEntry};
+use gptman::{GPTPartitionEntry, GPT};
 use rand::Rng;
+use std::{
+    fs::{File, OpenOptions},
+    io::{self, Seek, SeekFrom},
+    path::Path,
+};
 
 pub trait Partitioner {
     /// Adds a new partition to the in-memory partition table.
@@ -51,9 +55,7 @@ pub enum TableError {
 }
 
 impl From<gptman::Error> for TableError {
-    fn from(error: gptman::Error) -> Self {
-        TableError::Gpt(error)
-    }
+    fn from(error: gptman::Error) -> Self { TableError::Gpt(error) }
 }
 
 pub type PartitionResult<T> = Result<T, PartitionError>;

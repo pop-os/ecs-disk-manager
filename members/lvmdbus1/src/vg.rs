@@ -38,32 +38,32 @@ impl<'a> LvmConn<'a> for VgConn {
     const DEST: &'static str = "com.redhat.lvmdbus1";
     const OBJECT: &'static str = "/com/redhat/lvmdbus1/Vg";
 
-    fn conn(&self) -> &Connection {
-        &self.conn
-    }
+    fn conn(&self) -> &Connection { &self.conn }
 }
 
 pub struct VgPath<'a> {
-    conn: ConnPath<'a, &'a Connection>,
+    conn:     ConnPath<'a, &'a Connection>,
     pub node: u32,
 }
 
 impl<'a> VgPath<'a> {
-    pub fn extent_count(&self) -> Result<u64, Error> {
-        self.get("ExtentCount")
-    }
+    // pub fn activate(&self) -> Result<(), Error> {
+    //     self.conn.method_call_with_args(
+    //         Self::OBJECT,
+    //         &Member::new("Activate").expect("invalid member: Activate"),
+    //         move |message| {
 
-    pub fn extent_size_bytes(&self) -> Result<u64, Error> {
-        self.get("ExtentSizeBytes")
-    }
+    //         }
+    //     )
+    // }
 
-    pub fn extent_free_count(&self) -> Result<u64, Error> {
-        self.get("FreeCount")
-    }
+    pub fn extent_count(&self) -> Result<u64, Error> { self.get("ExtentCount") }
 
-    pub fn lv_count(&self) -> Result<u64, Error> {
-        self.get("LvCount")
-    }
+    pub fn extent_size_bytes(&self) -> Result<u64, Error> { self.get("ExtentSizeBytes") }
+
+    pub fn extent_free_count(&self) -> Result<u64, Error> { self.get("FreeCount") }
+
+    pub fn lv_count(&self) -> Result<u64, Error> { self.get("LvCount") }
 
     pub fn lvs(&self) -> impl Iterator<Item = dbus::Path> {
         self.conn
@@ -73,9 +73,7 @@ impl<'a> VgPath<'a> {
             .flat_map(|paths| paths.into_iter())
     }
 
-    pub fn pv_count(&self) -> Result<u64, Error> {
-        self.get("PvCount")
-    }
+    pub fn pv_count(&self) -> Result<u64, Error> { self.get("PvCount") }
 
     pub fn pvs(&self) -> impl Iterator<Item = dbus::Path> {
         self.conn
@@ -89,15 +87,9 @@ impl<'a> VgPath<'a> {
 impl<'a> LvmPath<'a> for VgPath<'a> {
     const PATH: &'static str = "com.redhat.lvmdbus1.Vg";
 
-    fn conn<'b>(&'b self) -> &'b ConnPath<'a, &'a Connection> {
-        &self.conn
-    }
+    fn conn<'b>(&'b self) -> &'b ConnPath<'a, &'a Connection> { &self.conn }
 
-    fn id(&self) -> u32 {
-        self.node
-    }
+    fn id(&self) -> u32 { self.node }
 
-    fn from_path(conn: ConnPath<'a, &'a Connection>, node: u32) -> Self {
-        Self { conn, node }
-    }
+    fn from_path(conn: ConnPath<'a, &'a Connection>, node: u32) -> Self { Self { conn, node } }
 }

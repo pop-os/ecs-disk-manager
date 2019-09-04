@@ -1,4 +1,3 @@
-
 #[macro_use]
 extern crate err_derive;
 #[macro_use]
@@ -12,17 +11,13 @@ use self::dbus_helper::DbusFactory;
 use dbus::{
     self,
     tree::{Factory, Signal},
-    BusType, Connection, Message, NameFlag
+    BusType, Connection, Message, NameFlag,
 };
 
 use ecs_disk_manager::*;
 use ecs_disk_manager_dbus::*;
 
-use std::{
-    cell::RefCell,
-    rc::Rc,
-    sync::Arc,
-};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 #[derive(Debug, Error)]
 pub enum InitError {
@@ -36,24 +31,20 @@ pub enum InitError {
 
 pub struct Daemon {
     pub connection: Arc<Connection>,
-    pub manager: DiskManager,
+    pub manager:    DiskManager,
 }
 
 impl Daemon {
     pub fn new() -> Result<Self, InitError> {
         let connection = Arc::new(
-            Connection::get_private(BusType::System)
-                .map_err(InitError::PrivateConnection)?
+            Connection::get_private(BusType::System).map_err(InitError::PrivateConnection)?,
         );
 
         connection
             .register_name(DBUS_NAME, NameFlag::ReplaceExisting as u32)
             .map_err(InitError::RegisterName)?;
 
-        Ok(Daemon {
-            connection,
-            manager: DiskManager::default(),
-        })
+        Ok(Daemon { connection, manager: DiskManager::default() })
     }
 }
 
@@ -77,12 +68,9 @@ fn init() -> Result<(), Error> {
         .interface(crate::DBUS_IFACE, ())
         .add_m(crate::methods::scan(daemon.clone(), &dbus_factory));
 
-    let tree = factory.tree(()).add(
-        factory
-            .object_path(DBUS_PATH, ())
-            .introspectable()
-            .add(root_interface)
-    );
+    let tree = factory
+        .tree(())
+        .add(factory.object_path(DBUS_PATH, ()).introspectable().add(root_interface));
 
     let connection = (*daemon.borrow()).connection.clone();
     tree.set_registered(&connection, true).unwrap();

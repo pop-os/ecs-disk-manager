@@ -19,20 +19,18 @@ pub struct LvmProbeError {
 }
 
 impl From<lvmdbus1::Error> for LvmProbeError {
-    fn from(cause: lvmdbus1::Error) -> Self {
-        LvmProbeError { cause }
-    }
+    fn from(cause: lvmdbus1::Error) -> Self { LvmProbeError { cause } }
 }
 
 pub struct LvmProber {
-    volume_groups: VgConn,
+    volume_groups:    VgConn,
     physical_volumes: PvConn,
 }
 
 impl LvmProber {
     pub fn new() -> Result<Self, LvmProbeError> {
         Ok(Self {
-            volume_groups: VgConn::new().map_err(LvmProbeError::from)?,
+            volume_groups:    VgConn::new().map_err(LvmProbeError::from)?,
             physical_volumes: PvConn::new().map_err(LvmProbeError::from)?,
         })
     }
@@ -51,11 +49,11 @@ impl LvmProber {
     pub fn iter_vgs<'a>(&'a self) -> impl Iterator<Item = Result<VgInfo, LvmProbeError>> + 'a {
         self.volume_groups.iter().map(|vg| {
             Ok(VgInfo {
-                name: vg.name()?,
-                extent_size: vg.extent_size_bytes()?,
-                extents: vg.extent_count()?,
+                name:         vg.name()?,
+                extent_size:  vg.extent_size_bytes()?,
+                extents:      vg.extent_count()?,
                 extents_free: vg.extent_free_count()?,
-                pvs: vg
+                pvs:          vg
                     .pvs()
                     .map(|path| {
                         let conn = PvConn::new()?;
@@ -67,7 +65,7 @@ impl LvmProber {
                         Ok((pv.node, LvmPv { path: PathBuf::from(path).into(), uuid: uuid.into() }))
                     })
                     .collect::<Result<_, lvmdbus1::Error>>()?,
-                lvs: vg
+                lvs:          vg
                     .lvs()
                     .map(|path| {
                         let conn = LvConn::new()?;
@@ -86,12 +84,12 @@ impl LvmProber {
 }
 
 pub struct VgInfo {
-    pub name: String,
-    pub extent_size: u64,
-    pub extents: u64,
+    pub name:         String,
+    pub extent_size:  u64,
+    pub extents:      u64,
     pub extents_free: u64,
-    pub pvs: Vec<(u32, LvmPv)>,
-    pub lvs: Vec<LvmLv>,
+    pub pvs:          Vec<(u32, LvmPv)>,
+    pub lvs:          Vec<LvmLv>,
 }
 
 pub fn slaves_iter(device: &str) -> impl Iterator<Item = Box<str>> {

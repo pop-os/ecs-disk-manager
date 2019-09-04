@@ -34,28 +34,20 @@ impl<'a> LvmConn<'a> for PvConn {
     const DEST: &'static str = "com.redhat.lvmdbus1";
     const OBJECT: &'static str = "/com/redhat/lvmdbus1/Vg";
 
-    fn conn(&self) -> &Connection {
-        &self.conn
-    }
+    fn conn(&self) -> &Connection { &self.conn }
 }
 
 pub struct PvPath<'a> {
-    conn: ConnPath<'a, &'a Connection>,
+    conn:     ConnPath<'a, &'a Connection>,
     pub node: u32,
 }
 
 impl<'a> LvmPath<'a> for PvPath<'a> {
     const PATH: &'static str = "com.redhat.lvmdbus1.Pv";
 
-    fn conn<'b>(&'b self) -> &'b ConnPath<'a, &'a Connection> {
-        &self.conn
-    }
+    fn conn<'b>(&'b self) -> &'b ConnPath<'a, &'a Connection> { &self.conn }
 
-    fn id(&self) -> u32 {
-        self.node
-    }
+    fn id(&self) -> u32 { self.node }
 
-    fn from_path(conn: ConnPath<'a, &'a Connection>, node: u32) -> Self {
-        Self { conn, node }
-    }
+    fn from_path(conn: ConnPath<'a, &'a Connection>, node: u32) -> Self { Self { conn, node } }
 }
