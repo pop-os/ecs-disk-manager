@@ -49,6 +49,21 @@ pub trait LvmConn<'a>: Sized {
 pub trait LvmPath<'a>: Sized {
     const PATH: &'static str;
 
+    fn call_method<F: FnOnce(&mut dbus::Message)>(
+        &self,
+        method: &'static str,
+        append_args: F,
+    ) -> Result<dbus::Message, Error> {
+        let interface = dbus::Interface::new(Self::PATH).unwrap();
+        let member = dbus::Member::new(method).unwrap();
+        let conn = self.conn();
+        let m = conn
+            .method_call_with_args(&interface, &member, append_args)
+            .map_err(|cause| MethodError::new(method, Self::PATH, self.id(), cause))?;
+
+        conn.conn.send_with_reply_and_block(m, conn.timeout).map_err(|why| Error::Call(method, why))
+    }
+
     fn conn<'b>(&'b self) -> &'b dbus::ConnPath<'a, &'a dbus::Connection>;
 
     fn from_path(path: dbus::ConnPath<'a, &'a dbus::Connection>, node: u32) -> Self;
@@ -58,7 +73,7 @@ pub trait LvmPath<'a>: Sized {
     fn get<T: for<'b> dbus::arg::Get<'b>>(&self, method: &'static str) -> Result<T, Error> {
         self.conn()
             .get::<T>(Self::PATH, method)
-            .map_err(|why| MethodError::new(method, "VG", self.id(), why))
+            .map_err(|why| MethodError::new(method, Self::PATH, self.id(), why))
             .map_err(Error::from)
     }
 
@@ -69,9 +84,15 @@ pub trait LvmPath<'a>: Sized {
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error(display = "failed to establish dbus connection")]
+    #[error(display = "argument mismatch in {} method", _0)]
+    ArgumentMismatch(&'static str, #[error(cause)] dbus::arg::TypeMismatchError),
+    #[error(display = "calling {} method failed", _0)]
+    Call(&'static str, #[error(cause)] dbus::Error),
+    #[error(display = "unable to establish dbus connection")]
     Connection(#[error(cause)] dbus::Error),
-    #[error(display = "lvmdbus1 returned an error")]
+    #[error(display = "failed to get property for {}", _0)]
+    GetProperty(&'static str, #[error(cause)] dbus::Error),
+    #[error(display = "failed to create {} method call", _0)]
     Method(#[error(cause)] MethodError),
 }
 
